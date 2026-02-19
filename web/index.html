@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bets WebApp</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="header-left">
+          <div class="logo">
+            <span>PRO</span>
+          </div>
+          <div class="brand">
+            <div class="brand-title">Casino</div>
+            <div class="brand-subtitle">Football betting</div>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="search-box">
+            <input id="search-input" type="text" placeholder="Search league..." />
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab tab-active" data-tab="sportsbook">Sportsbook</button>
+        <button class="tab" data-tab="wallet">Кошелёк</button>
+        <button class="tab" data-tab="profile">Профиль</button>
+      </nav>
+
+      <main class="layout" data-page="sportsbook">
+        <aside class="sidebar">
+          <div class="sidebar-title">FOOTBALL</div>
+          <button class="league-item league-item-active" data-league="all">
+            <div class="league-main">
+              <span class="league-flag">🌐</span>
+              <span class="league-name">All leagues</span>
+            </div>
+            <span class="pill" id="all-matches-count">0</span>
+          </button>
+          <div id="leagues-list"></div>
+        </aside>
+
+        <section class="content">
+          <div class="content-header">
+            <div class="content-title">Football</div>
+            <div class="content-subtitle">All leagues • Live • Today</div>
+          </div>
+          <div class="matches" id="matches-list"></div>
+        </section>
+
+        <aside class="betslip">
+          <div class="betslip-header">
+            <div>
+              <div class="betslip-title">Bet Slip</div>
+              <div class="betslip-subtitle">SINGLE • MULTIPLE</div>
+            </div>
+            <span class="pill" id="slip-count">0</span>
+          </div>
+          <div id="slip-items" class="slip-items"></div>
+          <div class="slip-summary">
+            <div class="row">
+              <span>Total odds</span>
+              <span id="total-odds">—</span>
+            </div>
+            <div class="quick-amounts">
+              <button class="quick-btn" data-amount="10">€10</button>
+              <button class="quick-btn" data-amount="50">€50</button>
+              <button class="quick-btn" data-amount="100">€100</button>
+            </div>
+            <input
+              type="number"
+              id="stake-input"
+              class="input"
+              placeholder="Amount"
+              min="0"
+            />
+            <div class="row">
+              <span>Possible win</span>
+              <span id="possible-win">€0.00</span>
+            </div>
+            <button id="place-bet-btn" class="primary-btn">Place bet</button>
+            <button id="clear-slip-btn" class="ghost-btn">Clear slip</button>
+          </div>
+        </aside>
+      </main>
+
+      <main class="page page-hidden" data-page="wallet">
+        <section class="card">
+          <h2>Кошелёк</h2>
+          <p>Пополнение криптовалютой, лимиты и запросы на выплаты (демо UI).</p>
+          <div class="grid-2">
+            <div class="subcard">
+              <div class="label">Баланс</div>
+              <div class="value-large">€0.00</div>
+            </div>
+            <div class="subcard">
+              <div class="label">Кредитный лимит</div>
+              <div class="value-large">€250.00</div>
+            </div>
+          </div>
+          <div class="subcard mt">
+            <div class="label">Пополнение криптовалютой</div>
+            <div class="grid-3">
+              <div class="wallet-box">
+                <div class="label">USDT (TRC20)</div>
+                <div class="mono">TXvQ...demo...p9</div>
+              </div>
+              <div class="wallet-box">
+                <div class="label">BTC</div>
+                <div class="mono">bc1q...demo...9k</div>
+              </div>
+              <div class="wallet-box">
+                <div class="label">ETH</div>
+                <div class="mono">0x...demo...f2</div>
+              </div>
+            </div>
+            <div class="actions-row">
+              <button class="primary-btn">Я отправил депозит</button>
+              <button class="ghost-btn">История пополнений</button>
+            </div>
+          </div>
+          <div class="grid-2 mt">
+            <div class="subcard">
+              <div class="label">Запросить лимит</div>
+              <p>Отправьте запрос на увеличение кредитного лимита.</p>
+              <div class="actions-row">
+                <button class="primary-btn">Запросить увеличение</button>
+                <button class="ghost-btn">Статус</button>
+              </div>
+            </div>
+            <div class="subcard">
+              <div class="label">Запросить выплату</div>
+              <p>Создайте заявку на вывод выигрыша по ставкам.</p>
+              <div class="actions-row">
+                <button class="primary-btn">Создать заявку</button>
+                <button class="ghost-btn">Мои выплаты</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <main class="page page-hidden" data-page="profile">
+        <section class="card">
+          <h2>Профиль</h2>
+          <p>Telegram-аккаунт и настройки (демо).</p>
+          <div class="grid-2 mt">
+            <div class="wallet-box">
+              <div class="label">User</div>
+              <div class="value">@telegram_user</div>
+            </div>
+            <div class="wallet-box">
+              <div class="label">Role</div>
+              <div class="value">Player</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bets Admin</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="header-left">
+          <div class="logo">ADM</div>
+          <div>
+            <div class="brand-title">BetsBot Admin</div>
+            <div class="brand-subtitle">Users • Limits • Payouts</div>
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab tab-active" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="users">Users</button>
+        <button class="tab" data-tab="payouts">Payouts</button>
+      </nav>
+
+      <main class="page" data-page="dashboard">
+        <section class="card">
+          <h2>Dashboard</h2>
+          <p>Обзор: пользователи, лимиты, ставки, заявки на выплаты (демо данные).</p>
+          <div class="grid-3 mt">
+            <div class="subcard">
+              <div class="label">Users</div>
+              <div class="value-large" id="stat-users">0</div>
+            </div>
+            <div class="subcard">
+              <div class="label">Total staked</div>
+              <div class="value-large" id="stat-staked">€0</div>
+            </div>
+            <div class="subcard">
+              <div class="label">Pending payouts</div>
+              <div class="value-large" id="stat-pending">0</div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <main class="page page-hidden" data-page="users">
+        <section class="card">
+          <h2>Users</h2>
+          <p>Просмотр игроков и редактирование кредитных лимитов.</p>
+          <div class="mt">
+            <input id="users-search" class="input" placeholder="Search by @tg or id..." />
+          </div>
+          <div class="table mt" id="users-table"></div>
+        </section>
+      </main>
+
+      <main class="page page-hidden" data-page="payouts">
+        <section class="card">
+          <h2>Payouts</h2>
+          <p>Подтверждение запросов игроков на выплаты.</p>
+          <div class="mt">
+            <input id="payouts-search" class="input" placeholder="Search payouts..." />
+          </div>
+          <div class="grid-3 mt">
+            <div class="subcard">
+              <div class="label">Pending</div>
+              <div class="value-large" id="pstat-pending">0</div>
+            </div>
+            <div class="subcard">
+              <div class="label">Approved</div>
+              <div class="value-large" id="pstat-approved">0</div>
+            </div>
+            <div class="subcard">
+              <div class="label">Rejected</div>
+              <div class="value-large" id="pstat-rejected">0</div>
+            </div>
+          </div>
+          <div class="table mt" id="payouts-table"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+
