@@ -12,6 +12,7 @@ export type W54Outcome = {
 export type W54Match = {
   matchId?: string;
   lineId?: string;
+  detailUrl?: string; // URL to detail page (e.g., "/line/26730210/")
   league?: string;
   startTime?: string; // e.g. "19:45"
   startDate?: string; // e.g. "19.02"
@@ -145,6 +146,22 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
       const matchId = String(firstBtn.attr("data-match-id") || "");
       const lineId = String(firstBtn.attr("data-line-id") || "");
 
+      // Extract detail page URL from <a class="DefaultLine_lineLink__...">
+      // Try multiple selectors to find the link
+      let $link = $row.find("a[class*='DefaultLine_lineLink']").first();
+      if ($link.length === 0) {
+        // Try finding link by href pattern
+        $link = $row.find("a[href^='/line/']").first();
+      }
+      const detailUrl = $link.length > 0 ? String($link.attr("href") || "") : undefined;
+      
+      // Debug logging
+      if (detailUrl) {
+        console.log(`[DEBUG] Match: ${teams[0]} vs ${teams[1]}, detailUrl: ${detailUrl}`);
+      } else {
+        console.warn(`[DEBUG] No detailUrl found for match: ${teams[0]} vs ${teams[1]}`);
+      }
+
       // First pass: extract values from title buttons (they may be disabled)
       let totalValue: string | undefined;
       let foraValue: string | undefined;
@@ -223,6 +240,7 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
       matches.push({
         matchId: matchId || undefined,
         lineId: lineId || undefined,
+        detailUrl: detailUrl || undefined,
         league: league,
         startTime: time || undefined,
         startDate: date || undefined,

@@ -7,6 +7,7 @@ import {
   parseW54SnapshotHtmlFromFile,
   parseW54SnapshotHtmlFromUrl
 } from "./parsers/w54Snapshot";
+import { parseW54DetailPageFromUrl } from "./parsers/w54DetailPage";
 
 // Load env from common local files (Cursor blocks creating ".env*" via tools,
 // so we support env.local/env.example too).
@@ -53,6 +54,29 @@ app.get("/api/w54/live", async (req, res) => {
     res.json(result);
   } catch (e: any) {
     res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Get detailed match information from detail page
+app.get("/api/w54/detail", async (req, res) => {
+  try {
+    const url = req.query.url as string;
+    if (!url) {
+      res.status(400).json({ ok: false, error: "Missing 'url' query parameter" });
+      return;
+    }
+    console.log(`[API] /api/w54/detail called with url: ${url}`);
+    const result = await parseW54DetailPageFromUrl(url);
+    console.log(`[API] /api/w54/detail success, outcomes: ${result.outcomes.length}`);
+    res.json(result);
+  } catch (e: any) {
+    console.error(`[API] /api/w54/detail error:`, e);
+    console.error(`[API] Error stack:`, e?.stack);
+    res.status(500).json({ 
+      ok: false, 
+      error: e?.message || String(e),
+      stack: process.env.NODE_ENV === 'development' ? e?.stack : undefined
+    });
   }
 });
 
