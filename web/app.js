@@ -398,9 +398,16 @@ function handleOddsClick(e) {
   };
   const displayLabel = labelMap[outcomeKey] || label;
 
-  const existingIdx = state.slip.findIndex(
+  // Check if there's already a bet for this match (any outcome)
+  const existingMatchIdx = state.slip.findIndex(
+    (s) => s.matchId === matchId
+  );
+  
+  // Check if it's the same outcome
+  const existingSameOutcomeIdx = state.slip.findIndex(
     (s) => s.matchId === matchId && s.outcomeKey === outcomeKey
   );
+  
   const next = {
     matchId: match.id,
     outcomeKey,
@@ -410,9 +417,18 @@ function handleOddsClick(e) {
     away: match.away,
     leagueName: match.leagueName
   };
-  if (existingIdx >= 0) {
-    state.slip.splice(existingIdx, 1); // Remove if clicking same
-  } else {
+  
+  // If clicking the same outcome, toggle it off
+  if (existingSameOutcomeIdx >= 0) {
+    state.slip.splice(existingSameOutcomeIdx, 1);
+  } 
+  // If there's a bet for this match but different outcome, replace it
+  else if (existingMatchIdx >= 0) {
+    state.slip.splice(existingMatchIdx, 1);
+    state.slip.unshift(next);
+  } 
+  // No bet for this match yet, just add it
+  else {
     state.slip.unshift(next);
   }
   renderMatches();
