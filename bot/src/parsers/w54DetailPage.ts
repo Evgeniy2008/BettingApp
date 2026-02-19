@@ -36,7 +36,12 @@ export async function parseW54DetailPageFromUrl(
   // Ensure URL is absolute
   const baseUrl = url.startsWith("http") ? url : `https://w54rjjmb.com${url}`;
   
-  console.log(`[DEBUG] Fetching detail page from: ${baseUrl}`);
+  // Add timestamp to prevent caching
+  const urlWithCacheBuster = baseUrl.includes('?') 
+    ? `${baseUrl}&_t=${Date.now()}`
+    : `${baseUrl}?_t=${Date.now()}`;
+  
+  console.log(`[DEBUG] Fetching detail page from: ${urlWithCacheBuster}`);
   
   let browser;
   try {
@@ -61,10 +66,13 @@ export async function parseW54DetailPageFromUrl(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     );
     
+    // Disable caching
+    await page.setCacheEnabled(false);
+    
     // Navigate to the page
-    console.log(`[DEBUG] Navigating to: ${baseUrl}`);
+    console.log(`[DEBUG] Navigating to: ${urlWithCacheBuster}`);
     try {
-      await page.goto(baseUrl, {
+      await page.goto(urlWithCacheBuster, {
         waitUntil: 'networkidle2',
         timeout: 30000
       });

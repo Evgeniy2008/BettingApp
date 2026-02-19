@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as cheerio from "cheerio";
+import puppeteer from "puppeteer";
 
 export type W54Outcome = {
   label?: string;
@@ -54,15 +55,149 @@ function parseOddFromText(s: string) {
 export async function parseW54SnapshotHtmlFromUrl(
   url: string
 ): Promise<W54SnapshotResult> {
-  const res = await fetch(url, {
+  // Add timestamp and random to prevent caching
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(7);
+  const urlWithCacheBuster = url.includes('?') 
+    ? `${url}&_t=${timestamp}&_r=${random}`
+    : `${url}?_t=${timestamp}&_r=${random}`;
+  
+  console.log(`[Parser] Fetching matches from URL: ${urlWithCacheBuster}`);
+  console.log(`[Parser] Timestamp: ${new Date(timestamp).toISOString()}`);
+  const fetchStart = Date.now();
+  
+  const res = await fetch(urlWithCacheBuster, {
+    method: 'GET',
     headers: {
       "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
+      "Expires": "0",
+      "If-Modified-Since": "0",
+      "If-None-Match": "*",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1"
+    },
+    cache: "no-store", // Prevent browser/Node.js fetch cache
+    redirect: "follow"
   });
+  
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  
   const html = await res.text();
-  return parseW54SnapshotHtml(html, url);
+  const fetchTime = Date.now() - fetchStart;
+  
+  // Log first 200 chars of HTML to verify we're getting fresh content
+  const htmlPreview = html.substring(0, 200).replace(/\s+/g, ' ');
+  console.log(`[Parser] Fetched ${html.length} bytes in ${fetchTime}ms from ${url}`);
+  console.log(`[Parser] HTML preview: ${htmlPreview}...`);
+  
+  const result = parseW54SnapshotHtml(html, url);
+  console.log(`[Parser] Parsed ${result.matches.length} matches from ${url}`);
+  
+  // Log first few match IDs to verify they're different
+  if (result.matches.length > 0) {
+    const firstMatches = result.matches.slice(0, 3).map(m => `${m.home} vs ${m.away} (${m.matchId || 'no-id'})`);
+    console.log(`[Parser] First 3 matches: ${firstMatches.join('; ')}`);
+  }
+  
+  return result;
+}
+
+/**
+ * Parses HTML from URL using Puppeteer (for JavaScript-rendered content).
+ */
+export async function parseW54SnapshotHtmlFromUrlWithPuppeteer(
+  url: string
+): Promise<W54SnapshotResult> {
+  // Add timestamp and random to prevent caching
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(7);
+  const urlWithCacheBuster = url.includes('?') 
+    ? `${url}&_t=${timestamp}&_r=${random}`
+    : `${url}?_t=${timestamp}&_r=${random}`;
+  
+  console.log(`[Parser] Fetching matches with Puppeteer from URL: ${urlWithCacheBuster}`);
+  console.log(`[Parser] Timestamp: ${new Date(timestamp).toISOString()}`);
+  
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu'
+      ]
+    });
+    
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
+    
+    // Disable all caching
+    await page.setCacheEnabled(false);
+    
+    // Set extra headers to prevent caching
+    await page.setExtraHTTPHeaders({
+      'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'If-Modified-Since': '0',
+      'If-None-Match': '*'
+    });
+    
+    // Clear browser cache before navigation
+    const client = await page.target().createCDPSession();
+    await client.send('Network.clearBrowserCache');
+    await client.send('Network.setCacheDisabled', { cacheDisabled: true });
+    
+    console.log(`[Parser] Navigating to: ${urlWithCacheBuster}`);
+    await page.goto(urlWithCacheBuster, {
+      waitUntil: 'networkidle2',
+      timeout: 30000
+    });
+    
+    // Wait for matches to load
+    try {
+      await page.waitForSelector('table[class*="LinesGroup_group"], tr[class*="DefaultLine_line"]', { timeout: 10000 });
+      console.log(`[Parser] Match selectors found`);
+    } catch {
+      console.warn(`[Parser] Match selectors not found, continuing anyway...`);
+    }
+    
+    // Additional wait for React to render
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    const html = await page.content();
+    console.log(`[Parser] Got ${html.length} bytes of HTML from Puppeteer`);
+    
+    await browser.close();
+    
+    const result = parseW54SnapshotHtml(html, url);
+    console.log(`[Parser] Parsed ${result.matches.length} matches using Puppeteer`);
+    
+    if (result.matches.length > 0) {
+      const firstMatches = result.matches.slice(0, 3).map(m => `${m.home} vs ${m.away} (${m.matchId || 'no-id'})`);
+      console.log(`[Parser] First 3 matches: ${firstMatches.join('; ')}`);
+    }
+    
+    return result;
+  } catch (e: any) {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {}
+    }
+    throw e;
+  }
 }
 
 /**
@@ -76,8 +211,15 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
   
   // Parse tables with structure: <table class="LinesGroup_group__oLThE">
   // First row is header with league title, rest are matches
-  const $tables = $("table[class*='LinesGroup_group']");
+  let $tables = $("table[class*='LinesGroup_group']");
   console.log(`[DEBUG] Found ${$tables.length} tables with LinesGroup_group`);
+  
+  // If no tables found with LinesGroup_group, try to find any tables
+  if ($tables.length === 0) {
+    console.log(`[DEBUG] No LinesGroup_group tables found, trying all tables...`);
+    $tables = $("table");
+    console.log(`[DEBUG] Found ${$tables.length} total tables`);
+  }
   
   $tables.each((_tableIdx, tableEl) => {
     const $table = $(tableEl);
@@ -97,15 +239,18 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
     
     // If no matches found with DefaultLine_line, try to find all tr elements that contain match data
     if ($matchRows.length === 0) {
+      console.log(`[DEBUG] No DefaultLine_line rows found, trying alternative selectors...`);
       $matchRows = $table.find("tr").filter((_i, row) => {
         const $row = $(row);
         // Skip header rows
         if ($row.hasClass("LinesGroup_header")) return false;
         // Check if row has teams or match data
-        const hasTeams = $row.find("div[class*='DefaultLine_teamsWrap'], div[class*='teamsWrap']").length > 0;
-        const hasOutcomes = $row.find("button[data-outcome-alias], button[data-odd]").length > 0;
-        return hasTeams || hasOutcomes;
+        const hasTeams = $row.find("div[class*='DefaultLine_teamsWrap'], div[class*='teamsWrap'], [class*='team']").length > 0;
+        const hasOutcomes = $row.find("button[data-outcome-alias], button[data-odd], button[class*='outcome']").length > 0;
+        const hasCells = $row.find("td[class*='DefaultLine_cell']").length > 0;
+        return hasTeams || hasOutcomes || hasCells;
       });
+      console.log(`[DEBUG] Found ${$matchRows.length} alternative match rows`);
     }
     
     console.log(`[DEBUG] Found ${$matchRows.length} match rows in table ${_tableIdx + 1}`);
@@ -131,10 +276,26 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
       // If no teams found, try alternative selectors
       if (teams.length < 2) {
         teams = $row
-          .find("div[class*='teamsWrap'] > div, [class*='team']")
+          .find("div[class*='teamsWrap'] > div, [class*='team'], [class*='Team']")
           .toArray()
           .map((n) => textTrim($(n).text()))
           .filter(Boolean);
+      }
+      
+      // Try even more alternative selectors if still no teams
+      if (teams.length < 2) {
+        // Look for text in cells that might contain team names
+        const $cells = $row.find("td");
+        $cells.each((_i, cell) => {
+          const text = textTrim($(cell).text());
+          // Skip if text looks like a time, date, or odd
+          if (text && !text.match(/^\d+[':]?$/) && !text.match(/^\d+\.\d+$/) && !text.match(/^\d{1,2}\.\d{1,2}$/)) {
+            if (text.length > 2 && text.length < 50) {
+              teams.push(text);
+            }
+          }
+        });
+        teams = teams.filter(Boolean).slice(0, 2); // Take only first 2
       }
       
       if (teams.length < 2) {
@@ -298,6 +459,17 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
   });
 
   console.log(`[DEBUG] Total matches found before deduplication: ${matches.length}`);
+  
+  // Log summary of what was found
+  if (matches.length === 0) {
+    console.warn(`[DEBUG] ⚠️ No matches found! This might indicate a structure change.`);
+    console.warn(`[DEBUG] HTML length: ${html.length}`);
+    console.warn(`[DEBUG] Tables found: ${$tables.length}`);
+    const allRows = $("tr").length;
+    console.warn(`[DEBUG] Total <tr> elements: ${allRows}`);
+    const allButtons = $("button[data-outcome-alias], button[data-odd]").length;
+    console.warn(`[DEBUG] Total outcome buttons: ${allButtons}`);
+  }
   
   // De-dup by matchId or home+away+time
   const unique: W54Match[] = [];

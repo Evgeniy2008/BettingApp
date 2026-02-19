@@ -5,7 +5,8 @@ import { Telegraf, Markup } from "telegraf";
 import type { Server } from "node:http";
 import {
   parseW54SnapshotHtmlFromFile,
-  parseW54SnapshotHtmlFromUrl
+  parseW54SnapshotHtmlFromUrl,
+  parseW54SnapshotHtmlFromUrlWithPuppeteer
 } from "./parsers/w54Snapshot";
 import { parseW54DetailPageFromUrl } from "./parsers/w54DetailPage";
 
@@ -33,26 +34,59 @@ app.use(
 );
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// Parse snapshot dump (Parseinfo.html) into JSON.
+// Parse snapshot dump (Parseinfo.html or ParseInfoNew.html) into JSON.
 app.get("/api/w54/snapshot", async (req, res) => {
   try {
     const file = (req.query.file as string) || "Parseinfo.html";
+    console.log(`[API] /api/w54/snapshot called with file: ${file}`);
     const result = await parseW54SnapshotHtmlFromFile(file);
+    console.log(`[API] /api/w54/snapshot success, found ${result.matches.length} matches`);
     res.json(result);
   } catch (e: any) {
+    console.error(`[API] /api/w54/snapshot error:`, e);
     res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 
 // Parse live site https://w54rjjmb.com/sport?lc=1&ss=all
 app.get("/api/w54/live", async (req, res) => {
+  const requestTime = new Date().toISOString();
   try {
     const url =
       (req.query.url as string) ||
       "https://w54rjjmb.com/sport?lc=1&ss=all";
-    const result = await parseW54SnapshotHtmlFromUrl(url);
-    res.json(result);
+    // Use Puppeteer by default to ensure JavaScript-rendered content is loaded
+    const usePuppeteer = req.query.puppeteer !== 'false' && req.query.puppeteer !== '0';
+    
+    console.log(`[API] /api/w54/live called at ${requestTime}, fetching from: ${url}, usePuppeteer: ${usePuppeteer}`);
+    
+    // Set headers to prevent caching
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Last-Modified', new Date().toUTCString());
+    res.setHeader('ETag', `"${Date.now()}"`);
+    
+    const result = usePuppeteer 
+      ? await parseW54SnapshotHtmlFromUrlWithPuppeteer(url)
+      : await parseW54SnapshotHtmlFromUrl(url);
+    
+    console.log(`[API] /api/w54/live success at ${requestTime}, found ${result.matches.length} matches`);
+    
+    // Add metadata to response
+    const responseWithMeta = {
+      ...result,
+      _meta: {
+        fetchedAt: requestTime,
+        matchCount: result.matches.length,
+        source: url,
+        method: usePuppeteer ? 'puppeteer' : 'fetch'
+      }
+    };
+    
+    res.json(responseWithMeta);
   } catch (e: any) {
+    console.error(`[API] /api/w54/live error at ${requestTime}:`, e);
     res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });

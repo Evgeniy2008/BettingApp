@@ -55,17 +55,38 @@ async function loadMatches() {
   // Show skeleton while loading
   showMatchesSkeleton();
   
+  const loadStartTime = Date.now();
+  console.log(`[App] Loading matches at ${new Date().toISOString()}`);
+  
   try {
     // Try live first
     let res;
     let data;
     
     try {
-      res = await fetch(`${API_BASE}/api/w54/live`);
+      // Add cache buster to prevent browser caching
+      const cacheBuster = `?_t=${Date.now()}&_r=${Math.random().toString(36).substring(7)}`;
+      const url = `${API_BASE}/api/w54/live${cacheBuster}`;
+      console.log(`[App] Fetching from: ${url}`);
+      
+      res = await fetch(url, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'If-Modified-Since': '0',
+          'If-None-Match': '*'
+        }
+      });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
       data = await res.json();
+      console.log(`[App] Received ${data.matches?.length || 0} matches from live endpoint`);
+      if (data._meta) {
+        console.log(`[App] Metadata:`, data._meta);
+      }
     } catch (fetchErr) {
       // If fetch fails (network error, CORS, etc.), try snapshot
       
@@ -174,10 +195,29 @@ async function loadMatches() {
       return b.count - a.count;
     });
     
+    const loadTime = Date.now() - loadStartTime;
+    console.log(`[App] Loaded ${matches.length} matches in ${loadTime}ms`);
+    console.log(`[App] First 3 matches:`, matches.slice(0, 3).map(m => `${m.home} vs ${m.away} (${m.matchId || 'no-id'})`));
+    
+    // Check if we have new matches by comparing with previous
+    if (window.lastMatchesCount !== undefined) {
+      if (window.lastMatchesCount !== matches.length) {
+        console.log(`[App] ⚠️ Match count changed: ${window.lastMatchesCount} → ${matches.length}`);
+      } else {
+        console.log(`[App] Match count unchanged: ${matches.length}`);
+      }
+    }
+    window.lastMatchesCount = matches.length;
+    
+    // Store timestamp of last update
+    window.lastUpdateTime = new Date().toISOString();
+    console.log(`[App] Last update: ${window.lastUpdateTime}`);
+    
     renderLeagues();
     renderMatches();
   } catch (err) {
     // Show error to user
+    console.error('[App] Error loading matches:', err);
     const root = document.getElementById("matches-list");
     if (root) {
       root.innerHTML = `<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Ошибка загрузки: ${err.message}. Убедитесь, что API запущен на ${API_BASE}</div></div>`;
@@ -1192,6 +1232,44 @@ window.addEventListener("DOMContentLoaded", () => {
   initTelegramWebApp();
   init();
   loadMatches();
+  
+  // Auto-refresh matches every 30 seconds
+  let refreshInterval = setInterval(() => {
+    console.log('[App] Auto-refreshing matches...');
+    loadMatches();
+  }, 30000); // 30 seconds
+  
+  // Store interval ID for potential cleanup
+  window.matchRefreshInterval = refreshInterval;
+  
+  // Manual refresh button
+  const refreshBtn = document.getElementById('refresh-matches-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      console.log('[App] Manual refresh triggered');
+      refreshBtn.style.transform = 'rotate(360deg)';
+      refreshBtn.style.transition = 'transform 0.5s';
+      refreshBtn.disabled = true;
+      
+      // Force clear any caches
+      if ('caches' in window) {
+        caches.keys().then(names => {
+          names.forEach(name => {
+            caches.delete(name);
+            console.log(`[App] Cleared cache: ${name}`);
+          });
+        });
+      }
+      
+      setTimeout(() => {
+        refreshBtn.style.transform = 'rotate(0deg)';
+        refreshBtn.disabled = false;
+      }, 500);
+      
+      // Force reload with fresh timestamp
+      loadMatches();
+    });
+  }
   
   // Setup mobile betslip handlers
   const floatBtn = document.getElementById("betslip-float-btn");
