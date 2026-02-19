@@ -17,6 +17,10 @@ export type W54Match = {
   startDate?: string; // e.g. "19.02"
   home?: string;
   away?: string;
+  isLive?: boolean; // LIVE match indicator
+  liveTime?: string; // e.g. "52'"
+  livePeriod?: string; // e.g. "2-й тайм"
+  score?: { home: number; away: number }; // Current score for LIVE matches
   outcomes?: W54Outcome[];
 };
 
@@ -88,6 +92,11 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
     $matchRows.each((_rowIdx, rowEl) => {
       const $row = $(rowEl);
 
+      // Check if this is a LIVE match
+      const isLive = $row.hasClass("DefaultLine_highlighted") || 
+                     $row.find("[class*='DefaultLine_liveLabel']").length > 0 ||
+                     $row.find("[class*='DefaultLine_scoreWrap']").length > 0;
+
       // Extract teams
       const teams = $row
         .find("div[class*='DefaultLine_teamsWrap'] > div")
@@ -96,9 +105,40 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
         .filter(Boolean);
       if (teams.length < 2) return;
 
-      // Extract time and date
-      const time = textTrim($row.find(".auto_center_match_time").first().text());
+      // Extract time and date (for non-LIVE matches)
+      let time = textTrim($row.find(".auto_center_match_time").first().text());
       const date = textTrim($row.find(".auto_center_match_date").first().text());
+
+      // For LIVE matches, extract live time and period
+      let liveTime: string | undefined;
+      let livePeriod: string | undefined;
+      let score: { home: number; away: number } | undefined;
+
+      if (isLive) {
+        // Extract live time (e.g. "52'")
+        const $matchInfo = $row.find("[class*='DefaultLine_matchInfo']");
+        $matchInfo.each((_i, el) => {
+          const text = textTrim($(el).text());
+          if (text.includes("'") || text.match(/\d+/)) {
+            if (!liveTime && text.match(/\d+'?/)) {
+              liveTime = text;
+            } else if (!livePeriod && (text.includes("тайм") || text.includes("половина"))) {
+              livePeriod = text;
+            }
+          }
+        });
+
+        // Extract score
+        const $scoreWrap = $row.find("[class*='DefaultLine_scoreWrap']");
+        if ($scoreWrap.length > 0) {
+          const scoreTexts = $scoreWrap.find("[class*='DefaultLine_score']").toArray();
+          if (scoreTexts.length >= 2) {
+            const homeScore = parseInt(textTrim($(scoreTexts[0]).text())) || 0;
+            const awayScore = parseInt(textTrim($(scoreTexts[1]).text())) || 0;
+            score = { home: homeScore, away: awayScore };
+          }
+        }
+      }
 
       // Extract match/line IDs
       const firstBtn = $row.find("button[data-match-id][data-line-id]").first();
@@ -188,6 +228,10 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
         startDate: date || undefined,
         home: teams[0],
         away: teams[1],
+        isLive: isLive || undefined,
+        liveTime: liveTime || undefined,
+        livePeriod: livePeriod || undefined,
+        score: score || undefined,
         outcomes
       });
     });

@@ -74,7 +74,11 @@ async function loadMatches() {
         home: m.home || "",
         away: m.away || "",
         odds: { homeWin, draw, awayWin },
-        allOutcomes: allOutcomes // Store all bet types for future expansion
+        allOutcomes: allOutcomes, // Store all bet types for future expansion
+        isLive: m.isLive || false,
+        liveTime: m.liveTime,
+        livePeriod: m.livePeriod,
+        score: m.score
       };
     });
 
@@ -158,6 +162,13 @@ function renderMatches() {
     });
   }
 
+  // Sort: LIVE matches first, then regular matches
+  ms.sort((a, b) => {
+    if (a.isLive && !b.isLive) return -1;
+    if (!a.isLive && b.isLive) return 1;
+    return 0;
+  });
+
   // Update content subtitle
   const subtitleEl = document.querySelector(".content-subtitle");
   if (subtitleEl) {
@@ -221,17 +232,23 @@ function renderMatchRow(match) {
   const foraValue = fora1?.value || outcomes.find((o) => o.type === "fora")?.value || "";
   const fora2 = outcomes.find((o) => o.type === "fora" && o.label === "Фора 2");
 
+  const isLive = match.isLive || false;
+  const liveBadge = isLive ? '<span class="live-badge">LIVE</span>' : '';
+  const scoreDisplay = isLive && match.score 
+    ? `<div class="match-score">${match.score.home} : ${match.score.away}</div>` 
+    : '';
+  const liveTimeDisplay = isLive && match.liveTime 
+    ? `<span class="live-time-highlight">${match.liveTime}${match.livePeriod ? ' • ' + match.livePeriod : ''}</span>` 
+    : `<span class="pill">${match.time || "TBD"}</span>`;
+
   return `
-    <div class="match-row" data-match-id="${match.id}">
+    <div class="match-row ${isLive ? 'match-row-live' : ''}" data-match-id="${match.id}">
       <div class="match-info">
-        <div class="match-league">${match.leagueName}</div>
+        <div class="match-league">${liveBadge} ${match.leagueName}</div>
         <div class="match-title">${match.home} <span style="opacity:.7">vs</span> ${match.away}</div>
+        ${scoreDisplay}
         <div class="match-time">
-          <span class="pill" style="${
-            match.time === "LIVE"
-              ? "border-color:rgba(248,113,113,.7);color:#f97373;"
-              : ""
-          }">${match.time}</span>
+          ${liveTimeDisplay}
         </div>
       </div>
       <div class="match-odds-row">
