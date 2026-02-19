@@ -358,7 +358,10 @@ function renderMatchRow(match) {
 
 function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null, value = null) {
   if (!odd || odd === 0) {
-    return `<div class="outcome-cell outcome-cell-empty">—</div>`;
+    return `<div class="outcome-wrapper">
+      <div class="outcome-label-mobile"></div>
+      <div class="outcome-cell outcome-cell-empty">—</div>
+    </div>`;
   }
   
   const label = displayLabel || outcomeKey;
@@ -376,24 +379,45 @@ function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null, value 
     }
   );
   
+  // Map outcomeKey to display label for mobile
+  const labelMap = {
+    "1": "П1",
+    "X": "X",
+    "2": "П2",
+    "total_over": "Б",
+    "total_under": "М",
+    "fora_one": "1",
+    "fora_two": "2"
+  };
+  const mobileLabel = labelMap[outcomeKey] || label;
+  
   return `
-    <button
-      class="outcome-cell outcome-btn ${active ? "outcome-btn-active" : ""}"
-      data-match-id="${match.id}"
-      data-outcome-key="${outcomeKey}"
-      data-odd="${odd}"
-      ${value ? `data-value="${value}"` : ""}
-    >
-      <div class="outcome-value">${formatOdd(odd)}</div>
-    </button>
+    <div class="outcome-wrapper">
+      <div class="outcome-label-mobile">${mobileLabel}</div>
+      <button
+        class="outcome-cell outcome-btn ${active ? "outcome-btn-active" : ""}"
+        data-match-id="${match.id}"
+        data-outcome-key="${outcomeKey}"
+        data-odd="${odd}"
+        ${value ? `data-value="${value}"` : ""}
+      >
+        <div class="outcome-value">${formatOdd(odd)}</div>
+      </button>
+    </div>
   `;
 }
 
 function renderOutcomeValue(value) {
   if (!value || value === "0") {
-    return `<div class="outcome-cell outcome-cell-value">—</div>`;
+    return `<div class="outcome-wrapper">
+      <div class="outcome-label-mobile"></div>
+      <div class="outcome-cell outcome-cell-value">—</div>
+    </div>`;
   }
-  return `<div class="outcome-cell outcome-cell-value">${value}</div>`;
+  return `<div class="outcome-wrapper">
+    <div class="outcome-label-mobile"></div>
+    <div class="outcome-cell outcome-cell-value">${value}</div>
+  </div>`;
 }
 
 function renderOddButton(match, label, odd) {
@@ -413,11 +437,74 @@ function renderOddButton(match, label, odd) {
   `;
 }
 
+// Check if mobile device
+function isMobile() {
+  return window.innerWidth <= 768;
+}
+
+// Open betslip on mobile
+function openBetslipMobile() {
+  if (!isMobile()) return;
+  const betslip = document.querySelector('.betslip');
+  const overlay = document.getElementById('betslip-overlay');
+  const closeBtn = document.getElementById("betslip-close-btn");
+  if (betslip) {
+    betslip.classList.add('betslip-open');
+    if (overlay) {
+      overlay.style.display = 'block';
+      setTimeout(() => overlay.classList.add('active'), 10);
+    }
+    document.body.style.overflow = 'hidden';
+    if (closeBtn) closeBtn.style.display = 'block';
+    
+    // Убеждаемся, что betslip может получать клики и имеет яркий фон
+    betslip.style.pointerEvents = 'all';
+    betslip.style.background = '#16181f';
+  }
+}
+
+// Close betslip on mobile
+function closeBetslipMobile() {
+  if (!isMobile()) return;
+  const betslip = document.querySelector('.betslip');
+  const overlay = document.getElementById('betslip-overlay');
+  const closeBtn = document.getElementById("betslip-close-btn");
+  if (betslip && overlay) {
+    betslip.classList.remove('betslip-open');
+    overlay.classList.remove('active');
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      document.body.style.overflow = '';
+      if (closeBtn) closeBtn.style.display = 'none';
+    }, 300);
+  }
+}
+
+// Toggle betslip visibility on mobile
+function toggleBetslipMobile() {
+  const betslip = document.querySelector('.betslip');
+  if (betslip && betslip.classList.contains('betslip-open')) {
+    closeBetslipMobile();
+  } else {
+    openBetslipMobile();
+  }
+}
+
 function renderSlip() {
   const root = document.getElementById("slip-items");
   const slip = state.slip;
   const slipCount = document.getElementById("slip-count");
+  const floatCount = document.getElementById("betslip-float-count");
   slipCount.textContent = slip.length.toString();
+  if (floatCount) {
+    floatCount.textContent = slip.length.toString();
+    // Show/hide float button based on slip count on mobile
+    const floatBtn = document.getElementById("betslip-float-btn");
+    if (floatBtn && isMobile()) {
+      floatBtn.style.display = 'flex';
+      floatBtn.classList.remove('hidden');
+    }
+  }
 
   if (!slip.length) {
     root.innerHTML =
@@ -437,7 +524,11 @@ function renderSlip() {
             <span class="odd-value">${formatOdd(s.odd)}</span>
           </div>
         </div>
-        <button class="slip-remove" title="Удалить">×</button>
+        <button class="slip-remove" title="Удалить" aria-label="Удалить ставку">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     `
       )
@@ -480,6 +571,11 @@ function handleLeagueClick(e) {
 function handleOddsClick(e) {
   const btn = e.target.closest(".odd-btn, .outcome-btn");
   if (!btn) return false;
+  
+  // Prevent event from bubbling to overlay or other handlers
+  e.stopPropagation();
+  e.preventDefault();
+  
   const matchId = btn.getAttribute("data-match-id");
   const outcomeKey = btn.getAttribute("data-outcome-key");
   const label = btn.getAttribute("data-label") || outcomeKey;
@@ -543,6 +639,12 @@ function handleOddsClick(e) {
   }
   renderMatches();
   renderSlip();
+  
+  // Open betslip on mobile when clicking on odds (after a short delay to allow UI to update)
+  if (isMobile()) {
+    setTimeout(() => openBetslipMobile(), 150);
+  }
+  
   return true; // Indicate that odds click was handled
 }
 
@@ -601,9 +703,12 @@ function init() {
     .getElementById("matches-list")
     .addEventListener("click", (e) => {
       // First try to handle odds click
-      const handled = handleOddsClick(e);
-      // If odds were clicked, don't open modal
-      if (handled) return;
+      // Check if clicking on outcome button first
+      if (e.target.closest(".outcome-btn, .outcome-cell")) {
+        const handled = handleOddsClick(e);
+        // If odds were clicked, don't open modal
+        if (handled) return;
+      }
       
       // Otherwise, check if we should open match detail modal
       if (e.target.closest(".outcome-btn, .outcome-cell, .match-odds-row")) {
@@ -986,17 +1091,22 @@ async function loadMatchDetail(detailUrl, match) {
           value: normalizedValue || undefined
         };
         
-        // If clicking the same exact outcome, toggle it off
-        if (existingSameOutcomeIdx >= 0) {
-          state.slip.splice(existingSameOutcomeIdx, 1);
-        } 
-        // Otherwise, add the new bet (allow multiple bets on same match)
-        else {
-          state.slip.unshift(next);
-        }
-        
-        renderMatches();
-        renderSlip();
+  // If clicking the same exact outcome, toggle it off
+  if (existingSameOutcomeIdx >= 0) {
+    state.slip.splice(existingSameOutcomeIdx, 1);
+  } 
+  // Otherwise, add the new bet (allow multiple bets on same match)
+  else {
+    state.slip.unshift(next);
+  }
+  
+  renderMatches();
+  renderSlip();
+  
+  // Open betslip on mobile when adding bet (after a short delay to allow UI to update)
+  if (isMobile()) {
+    setTimeout(() => openBetslipMobile(), 150);
+  }
         
         // Update active states in modal without re-rendering - use unique ID to avoid conflicts
         modalBody.querySelectorAll('.detail-outcome-btn').forEach(btn => {
@@ -1034,8 +1144,123 @@ async function loadMatchDetail(detailUrl, match) {
   }
 }
 
+// Initialize Telegram Web App
+function initTelegramWebApp() {
+  if (window.Telegram && window.Telegram.WebApp) {
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    
+    // Set theme colors
+    tg.setHeaderColor('#181a20');
+    tg.setBackgroundColor('#111317');
+    
+    // Enable closing confirmation
+    tg.enableClosingConfirmation();
+    
+    // Set main button if needed
+    // tg.MainButton.setText('Place bet');
+    // tg.MainButton.show();
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+  initTelegramWebApp();
   init();
   loadMatches();
+  
+  // Setup mobile betslip handlers
+  const floatBtn = document.getElementById("betslip-float-btn");
+  const overlay = document.getElementById("betslip-overlay");
+  const betslip = document.querySelector('.betslip');
+  const closeBtn = document.getElementById("betslip-close-btn");
+  
+  if (floatBtn) {
+    floatBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleBetslipMobile();
+    });
+    
+    floatBtn.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+    });
+  }
+  
+  // Обрабатываем клики на document для закрытия betslip при клике вне его
+  document.addEventListener('click', (e) => {
+    if (!isMobile()) return;
+    
+    const betslip = document.querySelector('.betslip.betslip-open');
+    if (!betslip) return;
+    
+    // Если клик был внутри betslip или на плавающей кнопке, не закрываем
+    if (betslip.contains(e.target) || 
+        e.target.closest('#betslip-float-btn') ||
+        e.target.closest('.betslip-close-btn')) {
+      return;
+    }
+    
+    // Если клик был вне betslip, закрываем его
+    closeBetslipMobile();
+  });
+  
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      closeBetslipMobile();
+    });
+    
+    closeBtn.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+    });
+  }
+  
+  // Предотвращаем закрытие betslip при клике внутри него
+  if (betslip) {
+    betslip.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+    
+    betslip.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+    });
+    
+    betslip.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+    });
+  }
+  
+  // Show float button on mobile on load
+  if (isMobile()) {
+    const floatBtn = document.getElementById("betslip-float-btn");
+    if (floatBtn) {
+      floatBtn.style.display = 'flex';
+      floatBtn.classList.remove('hidden');
+    }
+  } else {
+    const floatBtn = document.getElementById("betslip-float-btn");
+    if (floatBtn) {
+      floatBtn.style.display = 'none';
+    }
+  }
+  
+  // Handle window resize
+  window.addEventListener('resize', () => {
+    const floatBtn = document.getElementById("betslip-float-btn");
+    if (!isMobile()) {
+      closeBetslipMobile();
+      if (floatBtn) floatBtn.classList.add('hidden');
+      if (betslip) {
+        betslip.style.display = '';
+        betslip.classList.remove('betslip-open');
+      }
+    } else {
+      if (floatBtn && (state.slip.length > 0 || document.querySelector('.betslip.betslip-open'))) {
+        floatBtn.classList.remove('hidden');
+      }
+    }
+  });
 });
 
