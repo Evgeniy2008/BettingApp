@@ -6,8 +6,13 @@ const API_BASE = "http://localhost:3000";
 // This is the main sports page with all leagues and matches
 // The endpoint /api/w54/live fetches and parses this page
 
+// Option to force using snapshot file instead of live parsing
+// Set to true to use ParseInfoNew.html snapshot, false to use live parsing
+const USE_SNAPSHOT = false; // Change to true to force snapshot mode
+const SNAPSHOT_FILE = "ParseInfoNew.html";
+
 let leagues = [{ id: "all", country: "🌐", name: "All leagues" }];
-let matches = [];
+let matches = []; // Global matches array - will be updated on each load
 
 // Show skeleton loading for matches
 function showMatchesSkeleton() {
@@ -59,63 +64,87 @@ async function loadMatches() {
   console.log(`[App] Loading matches at ${new Date().toISOString()}`);
   
   try {
-    // Try live first
+    // Try live first (or snapshot if forced)
     let res;
     let data;
     
-    try {
-      // Add cache buster to prevent browser caching
-      const cacheBuster = `?_t=${Date.now()}&_r=${Math.random().toString(36).substring(7)}`;
-      const url = `${API_BASE}/api/w54/live${cacheBuster}`;
-      console.log(`[App] Fetching from: ${url}`);
-      
-      res = await fetch(url, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'If-Modified-Since': '0',
-          'If-None-Match': '*'
-        }
-      });
+    // Use snapshot if forced, otherwise try live
+    if (USE_SNAPSHOT) {
+      console.log(`[App] Using snapshot mode: ${SNAPSHOT_FILE}`);
+      res = await fetch(`${API_BASE}/api/w54/snapshot?file=${SNAPSHOT_FILE}`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
       data = await res.json();
-      console.log(`[App] Received ${data.matches?.length || 0} matches from live endpoint`);
-      if (data._meta) {
-        console.log(`[App] Metadata:`, data._meta);
-      }
-    } catch (fetchErr) {
-      // If fetch fails (network error, CORS, etc.), try snapshot
-      
+      console.log(`[App] Received ${data.matches?.length || 0} matches from snapshot`);
+    } else {
       try {
-        res = await fetch(`${API_BASE}/api/w54/snapshot?file=Parseinfo.html`);
+        // Add cache buster to prevent browser caching
+        const cacheBuster = `?_t=${Date.now()}&_r=${Math.random().toString(36).substring(7)}`;
+        const url = `${API_BASE}/api/w54/live${cacheBuster}`;
+        console.log(`[App] Fetching from: ${url}`);
+        
+        res = await fetch(url, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'If-Modified-Since': '0',
+            'If-None-Match': '*'
+          }
+        });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
         data = await res.json();
-      } catch (snapshotErr) {
-        // If both fail, show helpful error message
-        const isNetworkError = fetchErr.message.includes('Failed to fetch') || 
-                               fetchErr.message.includes('NetworkError') ||
-                               fetchErr.message.includes('Network request failed') ||
-                               fetchErr.name === 'TypeError';
-        
-        const errorMsg = isNetworkError
-          ? `Не удалось подключиться к API на ${API_BASE}. Убедитесь, что сервер запущен. Запустите сервер командой: npm start (в папке bot)`
-          : `Ошибка загрузки данных: ${fetchErr.message}`;
-        
-        throw new Error(errorMsg);
+        console.log(`[App] Received ${data.matches?.length || 0} matches from live endpoint`);
+        console.log(`[App] Raw data from API:`, {
+          source: data.source,
+          matchCount: data.matches?.length || 0,
+          firstMatch: data.matches?.[0] ? {
+            home: data.matches[0].home,
+            away: data.matches[0].away,
+            matchId: data.matches[0].matchId,
+            league: data.matches[0].league
+          } : null
+        });
+        if (data._meta) {
+          console.log(`[App] Metadata:`, data._meta);
+        }
+      } catch (fetchErr) {
+        // If fetch fails (network error, CORS, etc.), try snapshot
+        try {
+          console.log(`[App] Live fetch failed, trying snapshot with ParseInfoNew.html`);
+          res = await fetch(`${API_BASE}/api/w54/snapshot?file=ParseInfoNew.html`);
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          data = await res.json();
+          console.log(`[App] Received ${data.matches?.length || 0} matches from snapshot (ParseInfoNew.html)`);
+        } catch (snapshotErr) {
+          // If both fail, show helpful error message
+          const isNetworkError = fetchErr.message.includes('Failed to fetch') || 
+                                 fetchErr.message.includes('NetworkError') ||
+                                 fetchErr.message.includes('Network request failed') ||
+                                 fetchErr.name === 'TypeError';
+          
+          const errorMsg = isNetworkError
+            ? `Не удалось подключиться к API на ${API_BASE}. Убедитесь, что сервер запущен. Запустите сервер командой: npm start (в папке bot)`
+            : `Ошибка загрузки данных: ${fetchErr.message}`;
+          
+          throw new Error(errorMsg);
+        }
       }
     }
     
     // If live returns 0 matches, fallback to snapshot
     if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
-      res = await fetch(`${API_BASE}/api/w54/snapshot?file=Parseinfo.html`);
+      console.log(`[App] Live returned 0 matches, trying snapshot with ParseInfoNew.html`);
+      res = await fetch(`${API_BASE}/api/w54/snapshot?file=ParseInfoNew.html`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
+      console.log(`[App] Received ${data.matches?.length || 0} matches from snapshot fallback`);
     }
     
     if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
@@ -131,7 +160,12 @@ async function loadMatches() {
     const leagueMap = new Map();
     leagueMap.set("all", { id: "all", country: "🌐", name: "All leagues", count: 0 });
 
-    matches = data.matches.map((m, idx) => {
+    // Log raw data before processing
+    console.log(`[App] Processing ${data.matches.length} matches from API`);
+    console.log(`[App] Sample raw match:`, data.matches[0]);
+    
+    // Clear previous matches and create new array
+    const newMatches = data.matches.map((m, idx) => {
       const leagueId = m.league || "all";
       const leagueName = m.league || "Unknown League";
 
@@ -185,8 +219,16 @@ async function loadMatches() {
       return matchObj;
     });
     
+    // Replace global matches array with new data
+    matches = newMatches;
+    
+    // Log processed data
+    console.log(`[App] Processed ${matches.length} matches`);
+    console.log(`[App] Sample processed match:`, matches[0]);
+    
     // Log summary
     const matchesWithUrl = matches.filter(m => m.detailUrl).length;
+    console.log(`[App] Matches with detailUrl: ${matchesWithUrl}`);
 
     // Sort leagues by match count (descending), but keep "all" first
     leagues = Array.from(leagueMap.values()).sort((a, b) => {
@@ -197,22 +239,17 @@ async function loadMatches() {
     
     const loadTime = Date.now() - loadStartTime;
     console.log(`[App] Loaded ${matches.length} matches in ${loadTime}ms`);
-    console.log(`[App] First 3 matches:`, matches.slice(0, 3).map(m => `${m.home} vs ${m.away} (${m.matchId || 'no-id'})`));
-    
-    // Check if we have new matches by comparing with previous
-    if (window.lastMatchesCount !== undefined) {
-      if (window.lastMatchesCount !== matches.length) {
-        console.log(`[App] ⚠️ Match count changed: ${window.lastMatchesCount} → ${matches.length}`);
-      } else {
-        console.log(`[App] Match count unchanged: ${matches.length}`);
-      }
+    if (matches.length > 0) {
+      console.log(`[App] First 3 matches:`, matches.slice(0, 3).map(m => `${m.home} vs ${m.away} (${m.matchId || 'no-id'})`));
     }
-    window.lastMatchesCount = matches.length;
+    
+    // Reset pagination to first page when new data is loaded
+    state.currentPage = 1;
     
     // Store timestamp of last update
     window.lastUpdateTime = new Date().toISOString();
-    console.log(`[App] Last update: ${window.lastUpdateTime}`);
     
+    // Force re-render
     renderLeagues();
     renderMatches();
   } catch (err) {
@@ -1241,35 +1278,6 @@ window.addEventListener("DOMContentLoaded", () => {
   
   // Store interval ID for potential cleanup
   window.matchRefreshInterval = refreshInterval;
-  
-  // Manual refresh button
-  const refreshBtn = document.getElementById('refresh-matches-btn');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', () => {
-      console.log('[App] Manual refresh triggered');
-      refreshBtn.style.transform = 'rotate(360deg)';
-      refreshBtn.style.transition = 'transform 0.5s';
-      refreshBtn.disabled = true;
-      
-      // Force clear any caches
-      if ('caches' in window) {
-        caches.keys().then(names => {
-          names.forEach(name => {
-            caches.delete(name);
-            console.log(`[App] Cleared cache: ${name}`);
-          });
-        });
-      }
-      
-      setTimeout(() => {
-        refreshBtn.style.transform = 'rotate(0deg)';
-        refreshBtn.disabled = false;
-      }, 500);
-      
-      // Force reload with fresh timestamp
-      loadMatches();
-    });
-  }
   
   // Setup mobile betslip handlers
   const floatBtn = document.getElementById("betslip-float-btn");
