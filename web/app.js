@@ -68,7 +68,6 @@ async function loadMatches() {
       data = await res.json();
     } catch (fetchErr) {
       // If fetch fails (network error, CORS, etc.), try snapshot
-      console.warn("Failed to fetch live data, trying snapshot:", fetchErr);
       
       try {
         res = await fetch(`${API_BASE}/api/w54/snapshot?file=Parseinfo.html`);
@@ -93,14 +92,12 @@ async function loadMatches() {
     
     // If live returns 0 matches, fallback to snapshot
     if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
-      console.log("Live site returned no matches, trying snapshot...");
       res = await fetch(`${API_BASE}/api/w54/snapshot?file=Parseinfo.html`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
     }
     
     if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
-      console.warn("No matches found in snapshot either:", data);
       // Show error message to user
       const root = document.getElementById("matches-list");
       if (root) {
@@ -163,14 +160,12 @@ async function loadMatches() {
       };
       
       // Debug logging
-      console.log(`[DEBUG] Match loaded: ${matchObj.home} vs ${matchObj.away}, detailUrl: ${matchObj.detailUrl || 'MISSING'}`);
       
       return matchObj;
     });
     
     // Log summary
     const matchesWithUrl = matches.filter(m => m.detailUrl).length;
-    console.log(`[DEBUG] Total matches: ${matches.length}, matches with detailUrl: ${matchesWithUrl}`);
 
     // Sort leagues by match count (descending), but keep "all" first
     leagues = Array.from(leagueMap.values()).sort((a, b) => {
@@ -181,9 +176,7 @@ async function loadMatches() {
     
     renderLeagues();
     renderMatches();
-    console.log(`Loaded ${matches.length} matches from ${leagues.length - 1} leagues`);
   } catch (err) {
-    console.error("Failed to load matches:", err);
     // Show error to user
     const root = document.getElementById("matches-list");
     if (root) {
@@ -724,8 +717,6 @@ function openModal() {
 }
 
 async function loadMatchDetail(detailUrl, match) {
-  console.log(`[DEBUG] loadMatchDetail called for: ${match.home} vs ${match.away}`);
-  console.log(`[DEBUG] detailUrl: ${detailUrl}`);
   
   const modal = document.getElementById("match-detail-modal");
   const modalTitle = document.getElementById("modal-match-title");
@@ -769,19 +760,13 @@ async function loadMatchDetail(detailUrl, match) {
       ? detailUrl 
       : `https://w54rjjmb.com${detailUrl}`;
     
-    console.log(`[DEBUG] Fetching detail page: ${url}`);
-    console.log(`[DEBUG] API endpoint: ${API_BASE}/api/w54/detail?url=${encodeURIComponent(url)}`);
     
     const res = await fetch(`${API_BASE}/api/w54/detail?url=${encodeURIComponent(url)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     
     const data = await res.json();
     
-    console.log(`[DEBUG] Detail page response:`, data);
-    console.log(`[DEBUG] Outcomes count: ${data.outcomes?.length || 0}`);
-    
     if (!data.outcomes || data.outcomes.length === 0) {
-      console.warn(`[DEBUG] No outcomes found for match: ${match.home} vs ${match.away}`);
       modalBody.innerHTML = '<div class="loading">Коэффициенты не найдены</div>';
       return;
     }
@@ -818,12 +803,14 @@ async function loadMatchDetail(detailUrl, match) {
                  s.outcomeKey === outcomeKey && 
                  !s.value // 1X2 outcomes don't have value
         );
+        const uniqueId = `${match.id}_${outcomeKey}_${outcome.odd}`;
         html += `
           <button class="detail-outcome-item detail-outcome-btn ${isActive ? "detail-outcome-btn-active" : ""}" 
                   data-match-id="${match.id}" 
                   data-outcome-key="${outcomeKey}" 
                   data-odd="${outcome.odd}"
-                  data-label="${outcome.label}">
+                  data-label="${outcome.label}"
+                  data-unique-id="${uniqueId}">
             <div class="detail-outcome-label">${outcome.label}</div>
             <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
           </button>
@@ -851,6 +838,7 @@ async function loadMatchDetail(detailUrl, match) {
             ? "total_over" 
             : "total_under";
           const normalizedValue = value ? String(value).trim() : null;
+          const uniqueId = `${match.id}_${outcomeKey}_${value}_${outcome.odd}`;
           const isActive = state.slip.some(
             (s) => {
               if (s.matchId !== match.id || s.outcomeKey !== outcomeKey) return false;
@@ -867,7 +855,8 @@ async function loadMatchDetail(detailUrl, match) {
                     data-outcome-key="${outcomeKey}" 
                     data-odd="${outcome.odd}"
                     data-label="${outcome.label}"
-                    data-value="${value}">
+                    data-value="${value}"
+                    data-unique-id="${uniqueId}">
               <div class="detail-outcome-label">${outcome.label}</div>
               <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
             </button>
@@ -896,6 +885,7 @@ async function loadMatchDetail(detailUrl, match) {
             ? "fora_one" 
             : "fora_two";
           const normalizedValue = value ? String(value).trim() : null;
+          const uniqueId = `${match.id}_${outcomeKey}_${value}_${outcome.odd}`;
           const isActive = state.slip.some(
             (s) => {
               if (s.matchId !== match.id || s.outcomeKey !== outcomeKey) return false;
@@ -912,7 +902,8 @@ async function loadMatchDetail(detailUrl, match) {
                     data-outcome-key="${outcomeKey}" 
                     data-odd="${outcome.odd}"
                     data-label="${outcome.label}"
-                    data-value="${value}">
+                    data-value="${value}"
+                    data-unique-id="${uniqueId}">
               <div class="detail-outcome-label">${outcome.label}</div>
               <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
             </button>
@@ -929,6 +920,7 @@ async function loadMatchDetail(detailUrl, match) {
       html += '<div class="detail-outcomes-grid">';
       grouped["other"].forEach((outcome, idx) => {
         const outcomeKey = `other_${idx}`;
+        const uniqueId = `${match.id}_${outcomeKey}_${outcome.odd}`;
         const isActive = state.slip.some(
           (s) => s.matchId === match.id && s.outcomeKey === outcomeKey
         );
@@ -937,7 +929,8 @@ async function loadMatchDetail(detailUrl, match) {
                   data-match-id="${match.id}" 
                   data-outcome-key="${outcomeKey}" 
                   data-odd="${outcome.odd}"
-                  data-label="${outcome.label || "—"}">
+                  data-label="${outcome.label || "—"}"
+                  data-unique-id="${uniqueId}">
             <div class="detail-outcome-label">${outcome.label || "—"}</div>
             <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
             ${outcome.value ? `<div class="detail-outcome-param">${outcome.value}</div>` : ""}
@@ -1005,16 +998,20 @@ async function loadMatchDetail(detailUrl, match) {
         renderMatches();
         renderSlip();
         
-        // Update active states in modal without re-rendering
+        // Update active states in modal without re-rendering - use unique ID to avoid conflicts
         modalBody.querySelectorAll('.detail-outcome-btn').forEach(btn => {
           const btnMatchId = btn.getAttribute('data-match-id');
           const btnOutcomeKey = btn.getAttribute('data-outcome-key');
           const btnValue = btn.getAttribute('data-value');
+          const btnOdd = btn.getAttribute('data-odd');
           const normalizedBtnValue = btnValue ? String(btnValue).trim() : null;
           
+          // Use unique combination to identify exact outcome
           const isActive = state.slip.some(
             (s) => {
               if (s.matchId !== btnMatchId || s.outcomeKey !== btnOutcomeKey) return false;
+              // Also check odd to ensure exact match
+              if (Math.abs(s.odd - Number(btnOdd)) > 0.01) return false;
               // For outcomes with value (totals, foras), must match value exactly
               if (normalizedBtnValue) {
                 const sValue = s.value ? String(s.value).trim() : null;
@@ -1033,7 +1030,6 @@ async function loadMatchDetail(detailUrl, match) {
       });
     });
   } catch (err) {
-    console.error("Failed to load match detail:", err);
     modalBody.innerHTML = `<div class="loading" style="color:rgba(248,113,113,0.9);">Ошибка загрузки: ${err.message}</div>`;
   }
 }

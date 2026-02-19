@@ -72,9 +72,14 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
   const $ = cheerio.load(html);
   const matches: W54Match[] = [];
 
+  console.log(`[DEBUG] Starting to parse HTML, length: ${html.length}`);
+  
   // Parse tables with structure: <table class="LinesGroup_group__oLThE">
   // First row is header with league title, rest are matches
-  $("table[class*='LinesGroup_group']").each((_tableIdx, tableEl) => {
+  const $tables = $("table[class*='LinesGroup_group']");
+  console.log(`[DEBUG] Found ${$tables.length} tables with LinesGroup_group`);
+  
+  $tables.each((_tableIdx, tableEl) => {
     const $table = $(tableEl);
     
     // Find league title in header row
@@ -84,27 +89,60 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
     const leagueParts = titleButtons.map((btn: any) => textTrim($(btn).text())).filter(Boolean);
     const league = leagueParts.length > 0 ? leagueParts.join(". ") : undefined;
 
-    // Find all match rows (not header)
-    const $matchRows = $table.find("tr[class*='DefaultLine_line']").filter((_i, row) => {
+    // Find all match rows (not header) - try multiple selectors to catch all matches
+    let $matchRows = $table.find("tr[class*='DefaultLine_line']").filter((_i, row) => {
       const $row = $(row);
       return !$row.hasClass("LinesGroup_header");
     });
+    
+    // If no matches found with DefaultLine_line, try to find all tr elements that contain match data
+    if ($matchRows.length === 0) {
+      $matchRows = $table.find("tr").filter((_i, row) => {
+        const $row = $(row);
+        // Skip header rows
+        if ($row.hasClass("LinesGroup_header")) return false;
+        // Check if row has teams or match data
+        const hasTeams = $row.find("div[class*='DefaultLine_teamsWrap'], div[class*='teamsWrap']").length > 0;
+        const hasOutcomes = $row.find("button[data-outcome-alias], button[data-odd]").length > 0;
+        return hasTeams || hasOutcomes;
+      });
+    }
+    
+    console.log(`[DEBUG] Found ${$matchRows.length} match rows in table ${_tableIdx + 1}`);
 
     $matchRows.each((_rowIdx, rowEl) => {
       const $row = $(rowEl);
 
-      // Check if this is a LIVE match
-      const isLive = $row.hasClass("DefaultLine_highlighted") || 
-                     $row.find("[class*='DefaultLine_liveLabel']").length > 0 ||
-                     $row.find("[class*='DefaultLine_scoreWrap']").length > 0;
+      // Check if this is a LIVE match - use reliable indicators only
+      const hasLiveClass = $row.hasClass("DefaultLine_highlighted");
+      const hasLiveLabel = $row.find("[class*='DefaultLine_liveLabel']").length > 0;
+      const hasScoreWrap = $row.find("[class*='DefaultLine_scoreWrap']").length > 0;
+      
+      // Only mark as live if we have clear indicators (class, label, or score wrap)
+      const isLive = hasLiveClass || hasLiveLabel || hasScoreWrap;
 
-      // Extract teams
-      const teams = $row
+      // Extract teams - try multiple selectors
+      let teams = $row
         .find("div[class*='DefaultLine_teamsWrap'] > div")
         .toArray()
         .map((n) => textTrim($(n).text()))
         .filter(Boolean);
-      if (teams.length < 2) return;
+      
+      // If no teams found, try alternative selectors
+      if (teams.length < 2) {
+        teams = $row
+          .find("div[class*='teamsWrap'] > div, [class*='team']")
+          .toArray()
+          .map((n) => textTrim($(n).text()))
+          .filter(Boolean);
+      }
+      
+      if (teams.length < 2) {
+        console.warn(`[DEBUG] Skipping row: not enough teams found (found ${teams.length})`);
+        return;
+      }
+      
+      console.log(`[DEBUG] Parsing match: ${teams[0]} vs ${teams[1]}, isLive: ${isLive}`);
 
       // Extract time and date (for non-LIVE matches)
       let time = textTrim($row.find(".auto_center_match_time").first().text());
@@ -231,9 +269,13 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
         }
       });
 
-      // Only add match if we have at least 1X2 outcomes
+      // Add match even if no outcomes found on main page - outcomes can be fetched from detail page
       const has1X2 = outcomes.some((o) => o.type === "1x2");
-      if (!has1X2) return;
+      if (!has1X2) {
+        console.warn(`[DEBUG] Match ${teams[0]} vs ${teams[1]}: no 1X2 outcomes on main page (found ${outcomes.length} outcomes), but will add anyway - can fetch from detail page`);
+      }
+      
+      console.log(`[DEBUG] Adding match: ${teams[0]} vs ${teams[1]}, outcomes: ${outcomes.length}, isLive: ${isLive}`);
 
       const key = matchId || `${teams[0]}__${teams[1]}__${time}__${date}`;
 
@@ -255,15 +297,24 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
     });
   });
 
+  console.log(`[DEBUG] Total matches found before deduplication: ${matches.length}`);
+  
   // De-dup by matchId or home+away+time
   const unique: W54Match[] = [];
   const seen = new Set<string>();
   for (const m of matches) {
     const key = m.matchId || `${m.home || ""}__${m.away || ""}__${m.startTime || ""}__${m.startDate || ""}`;
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      console.log(`[DEBUG] Skipping duplicate match: ${m.home} vs ${m.away}`);
+      continue;
+    }
     seen.add(key);
     unique.push(m);
   }
+
+  const liveCount = unique.filter(m => m.isLive).length;
+  const regularCount = unique.length - liveCount;
+  console.log(`[DEBUG] Final matches: ${unique.length} total (${liveCount} live, ${regularCount} regular)`);
 
   return {
     source: "live",
