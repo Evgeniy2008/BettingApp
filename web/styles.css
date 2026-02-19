@@ -176,6 +176,10 @@ body {
   background: #16181f; /* ровный тёмный */
   padding: 10px 10px 12px;
   box-shadow: 0 16px 35px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 180px);
+  overflow: hidden;
 }
 
 .sidebar-title {
@@ -183,6 +187,32 @@ body {
   font-weight: 700;
   color: rgba(232, 232, 234, 0.6);
   padding: 4px 2px 6px;
+  flex-shrink: 0;
+}
+
+.leagues-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-top: 4px;
+  min-height: 0;
+}
+
+.leagues-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.leagues-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.leagues-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.leagues-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .league-item {
@@ -201,8 +231,9 @@ body {
 }
 
 .league-item-active {
-  border-color: rgba(248, 113, 113, 0.7);
-  background: rgba(220, 38, 38, 0.18);
+  border-color: red !important;
+  background: rgba(220, 38, 38, 0.25) !important;
+  box-shadow: 0 0 0 1px red;
 }
 
 .league-main {
@@ -246,10 +277,279 @@ body {
   margin-top: 2px;
 }
 
+.matches-search-wrapper {
+  margin-bottom: 10px;
+}
+
+.matches-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 15, 18, 0.6);
+  padding: 0 12px;
+  height: 40px;
+  transition: all 0.2s;
+}
+
+.matches-search-box:focus-within {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(15, 15, 18, 0.8);
+  box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.1);
+}
+
+.search-icon {
+  width: 16px;
+  height: 16px;
+  color: rgba(232, 232, 234, 0.5);
+  flex-shrink: 0;
+  margin-right: 8px;
+  transition: color 0.2s;
+}
+
+.matches-search-box:focus-within .search-icon {
+  color: rgba(232, 232, 234, 0.8);
+}
+
+.matches-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0;
+}
+
+.matches-search-input::placeholder {
+  color: rgba(232, 232, 234, 0.4);
+}
+
+.matches-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(232, 232, 234, 0.7);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  margin-left: 8px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.matches-search-clear:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(232, 232, 234, 0.9);
+}
+
 .matches {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.matches::-webkit-scrollbar {
+  width: 6px;
+}
+
+.matches::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.matches::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.matches::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.matches-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.matches-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 6px;
+  gap: 12px;
+}
+
+.matches-header-info {
+  width: 200px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(232, 232, 234, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.matches-header-odds {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.matches-header-odds span {
+  min-width: 50px;
+  width: 50px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(232, 232, 234, 0.5);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.matches-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.match-row {
+  border-radius: 14px;
+  border: 1px solid #262835;
+  background: #14151d;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.match-info {
+  min-width: 0;
+  flex: 0 0 auto;
+  width: 200px;
+}
+
+.match-odds-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: flex-end;
+  overflow-x: auto;
+}
+
+.match-odds-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.match-odds-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.match-odds-row::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.outcome-cell {
+  min-width: 50px;
+  width: 50px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid #262835;
+  background: #181a22;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.outcome-btn {
+  cursor: pointer;
+  transition: all 0.2s;
+  color: inherit;
+  padding: 0;
+}
+
+.outcome-btn:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.outcome-btn-active {
+  border-color: red !important;
+  background: rgba(220, 38, 38, 0.25) !important;
+  box-shadow: 0 0 0 1px red;
+}
+
+.outcome-cell-value {
+  color: rgba(232, 232, 234, 0.6);
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.outcome-cell-empty {
+  color: rgba(232, 232, 234, 0.3);
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.03);
+}
+
+.outcome-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(232, 232, 234, 0.9);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pagination-btn {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 12px;
+  color: rgba(232, 232, 234, 0.7);
 }
 
 .match {

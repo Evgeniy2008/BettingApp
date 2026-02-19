@@ -3,6 +3,10 @@ import express from "express";
 import cors from "cors";
 import { Telegraf, Markup } from "telegraf";
 import type { Server } from "node:http";
+import {
+  parseW54SnapshotHtmlFromFile,
+  parseW54SnapshotHtmlFromUrl
+} from "./parsers/w54Snapshot";
 
 // Load env from common local files (Cursor blocks creating ".env*" via tools,
 // so we support env.local/env.example too).
@@ -19,8 +23,38 @@ const PORT = Number(process.env.PORT || 3000);
 
 // Minimal API for future expansion (auth, bets, wallet, payouts).
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: "*", // Allow all origins for dev (Live Server, file://, etc.)
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"]
+  })
+);
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// Parse snapshot dump (Parseinfo.html) into JSON.
+app.get("/api/w54/snapshot", async (req, res) => {
+  try {
+    const file = (req.query.file as string) || "Parseinfo.html";
+    const result = await parseW54SnapshotHtmlFromFile(file);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Parse live site https://w54rjjmb.com/sport?lc=1&ss=all
+app.get("/api/w54/live", async (req, res) => {
+  try {
+    const url =
+      (req.query.url as string) ||
+      "https://w54rjjmb.com/sport?lc=1&ss=all";
+    const result = await parseW54SnapshotHtmlFromUrl(url);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
 
 function listenWithFallback(startPort: number, tries = 10) {
   const attempt = (port: number, remaining: number) => {

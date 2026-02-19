@@ -1,58 +1,113 @@
-const leagues = [
-  { id: "int-afc-u23", country: "🌏", name: "AFC U23 Asian Cup" },
-  { id: "al-1", country: "🇦🇱", name: "Albania - Kategoria e Pare" },
-  { id: "al-2", country: "🇦🇱", name: "Albania - Kategoria Superiore" },
-  { id: "dz-1", country: "🇩🇿", name: "Algeria - Ligue 1" },
-  { id: "ar-cup", country: "🇦🇷", name: "Argentina - Copa Argentina" },
-  { id: "au-aleague", country: "🇦🇺", name: "Australia - A-League" },
-  { id: "at-bundes", country: "🇦🇹", name: "Austria - Bundesliga" },
-  { id: "az-prem", country: "🇦🇿", name: "Azerbaijan - Premier League" }
-];
+// API endpoint (adjust port if needed)
+const API_BASE = "http://localhost:3001";
 
-const matches = [
-  {
-    id: "m1",
-    leagueId: "at-bundes",
-    leagueName: "Austria - Bundesliga",
-    time: "Сегодня, 20:30",
-    home: "Rapid Wien",
-    away: "Sturm Graz",
-    odds: { homeWin: 2.25, draw: 3.2, awayWin: 3.05 }
-  },
-  {
-    id: "m2",
-    leagueId: "au-aleague",
-    leagueName: "Australia - A-League",
-    time: "Сегодня, 12:10",
-    home: "Sydney FC",
-    away: "Melbourne City",
-    odds: { homeWin: 2.05, draw: 3.55, awayWin: 3.3 }
-  },
-  {
-    id: "m3",
-    leagueId: "dz-1",
-    leagueName: "Algeria - Ligue 1",
-    time: "LIVE",
-    home: "CR Belouizdad",
-    away: "USM Alger",
-    odds: { homeWin: 2.9, draw: 2.85, awayWin: 2.65 }
-  },
-  {
-    id: "m4",
-    leagueId: "ar-cup",
-    leagueName: "Argentina - Copa Argentina",
-    time: "Завтра, 01:00",
-    home: "Lanús",
-    away: "Belgrano",
-    odds: { homeWin: 2.55, draw: 3.0, awayWin: 2.95 }
+let leagues = [{ id: "all", country: "🌐", name: "All leagues" }];
+let matches = [];
+
+// Load matches from live site or snapshot
+async function loadMatches() {
+  try {
+    // Try live first
+    let res = await fetch(`${API_BASE}/api/w54/live`);
+    let data = await res.json();
+    
+    // If live returns 0 matches, fallback to snapshot
+    if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
+      console.log("Live site returned no matches, trying snapshot...");
+      res = await fetch(`${API_BASE}/api/w54/snapshot?file=Parseinfo.html`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+    }
+    
+    if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
+      console.warn("No matches found in snapshot either:", data);
+      // Show error message to user
+      const root = document.getElementById("matches-list");
+      if (root) {
+        root.innerHTML = '<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Не удалось загрузить матчи. Проверьте консоль браузера (F12).</div></div>';
+      }
+      return;
+    }
+
+    // Group by league (if available) or create virtual leagues from match data
+    const leagueMap = new Map();
+    leagueMap.set("all", { id: "all", country: "🌐", name: "All leagues", count: 0 });
+
+    matches = data.matches.map((m, idx) => {
+      const leagueId = m.league || "all";
+      const leagueName = m.league || "Unknown League";
+
+      if (!leagueMap.has(leagueId)) {
+        leagueMap.set(leagueId, {
+          id: leagueId,
+          country: "🏳️",
+          name: leagueName,
+          count: 0
+        });
+      }
+      leagueMap.get(leagueId).count++;
+      if (leagueId !== "all") {
+        leagueMap.get("all").count++;
+      }
+
+      // Convert API format to UI format
+      const outcomes = m.outcomes || [];
+      // Find 1X2 outcomes
+      const homeWin = outcomes.find((o) => o.label === "1" && o.type === "1x2")?.odd || 0;
+      const draw = outcomes.find((o) => o.label === "X" && o.type === "1x2")?.odd || 0;
+      const awayWin = outcomes.find((o) => o.label === "2" && o.type === "1x2")?.odd || 0;
+      
+      // Store all outcomes (including totals, foras) for future use
+      const allOutcomes = outcomes;
+
+      const timeStr = m.startTime
+        ? `${m.startDate || ""} ${m.startTime}`.trim()
+        : "TBD";
+
+      return {
+        id: m.matchId || `m${idx}`,
+        matchId: m.matchId,
+        lineId: m.lineId,
+        leagueId: leagueId,
+        leagueName: leagueName,
+        time: timeStr,
+        home: m.home || "",
+        away: m.away || "",
+        odds: { homeWin, draw, awayWin },
+        allOutcomes: allOutcomes // Store all bet types for future expansion
+      };
+    });
+
+    // Sort leagues by match count (descending), but keep "all" first
+    leagues = Array.from(leagueMap.values()).sort((a, b) => {
+      if (a.id === "all") return -1;
+      if (b.id === "all") return 1;
+      return b.count - a.count;
+    });
+    
+    renderLeagues();
+    renderMatches();
+    console.log(`Loaded ${matches.length} matches from ${leagues.length - 1} leagues`);
+  } catch (err) {
+    console.error("Failed to load matches:", err);
+    // Show error to user
+    const root = document.getElementById("matches-list");
+    if (root) {
+      root.innerHTML = `<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Ошибка загрузки: ${err.message}. Убедитесь, что API запущен на ${API_BASE}</div></div>`;
+    }
+    renderLeagues();
+    renderMatches();
   }
-];
+}
 
 const state = {
   activeTab: "sportsbook",
   activeLeagueId: "all",
   slip: [],
-  stake: 0
+  stake: 0,
+  currentPage: 1,
+  matchesPerPage: 20,
+  searchQuery: ""
 };
 
 function formatOdd(n) {
@@ -78,47 +133,149 @@ function renderLeagues() {
           <span class="league-flag">${l.country || "🏳️"}</span>
           <span class="league-name">${l.name}</span>
         </div>
+        ${l.count > 0 ? `<span class="pill">${l.count}</span>` : ""}
       </button>
     `
     )
     .join("");
-
-  document.getElementById("all-matches-count").textContent = matches.length;
 }
 
 function renderMatches() {
   const root = document.getElementById("matches-list");
-  const ms =
+  let ms =
     state.activeLeagueId === "all"
       ? matches
       : matches.filter((m) => m.leagueId === state.activeLeagueId);
 
-  root.innerHTML = ms
-    .map(
-      (m) => `
-      <div class="match" data-match-id="${m.id}">
-        <div class="match-info">
-          <div class="match-league">${m.leagueName}</div>
-          <div class="match-title">${m.home} <span style="opacity:.7">vs</span> ${
-        m.away
-      }</div>
-          <div class="match-time">
-            <span class="pill" style="${
-              m.time === "LIVE"
-                ? "border-color:rgba(248,113,113,.7);color:#f97373;"
-                : ""
-            }">${m.time}</span>
-          </div>
-        </div>
-        <div class="odds">
-          ${renderOddButton(m, "1", m.odds.homeWin)}
-          ${renderOddButton(m, "X", m.odds.draw)}
-          ${renderOddButton(m, "2", m.odds.awayWin)}
+  // Apply search filter
+  if (state.searchQuery.trim()) {
+    const query = state.searchQuery.trim().toLowerCase();
+    ms = ms.filter((m) => {
+      const home = (m.home || "").toLowerCase();
+      const away = (m.away || "").toLowerCase();
+      const league = (m.leagueName || "").toLowerCase();
+      return home.includes(query) || away.includes(query) || league.includes(query);
+    });
+  }
+
+  // Update content subtitle
+  const subtitleEl = document.querySelector(".content-subtitle");
+  if (subtitleEl) {
+    const activeLeague = leagues.find((l) => l.id === state.activeLeagueId);
+    if (activeLeague && state.activeLeagueId !== "all") {
+      subtitleEl.textContent = `${activeLeague.name} • Live • Today`;
+    } else {
+      subtitleEl.textContent = "Football • All leagues • Live • Today";
+    }
+  }
+
+  // Pagination
+  const totalPages = Math.ceil(ms.length / state.matchesPerPage);
+  const startIdx = (state.currentPage - 1) * state.matchesPerPage;
+  const endIdx = startIdx + state.matchesPerPage;
+  const paginatedMatches = ms.slice(startIdx, endIdx);
+
+  root.innerHTML = `
+    <div class="matches-table">
+      <div class="matches-header">
+        <div class="matches-header-info">Матч</div>
+        <div class="matches-header-odds">
+          <span>П1</span>
+          <span>X</span>
+          <span>П2</span>
+          <span>Б</span>
+          <span>Тотал</span>
+          <span>М</span>
+          <span>1</span>
+          <span>Фора</span>
+          <span>2</span>
         </div>
       </div>
-    `
-    )
-    .join("");
+      <div class="matches-container">
+        ${paginatedMatches
+          .map((m) => renderMatchRow(m))
+          .join("")}
+      </div>
+    </div>
+    ${totalPages > 1 ? `
+      <div class="pagination">
+        <button class="pagination-btn" ${state.currentPage === 1 ? "disabled" : ""} data-page="${state.currentPage - 1}">←</button>
+        <span class="pagination-info">${state.currentPage} / ${totalPages}</span>
+        <button class="pagination-btn" ${state.currentPage === totalPages ? "disabled" : ""} data-page="${state.currentPage + 1}">→</button>
+      </div>
+    ` : ""}
+  `;
+}
+
+function renderMatchRow(match) {
+  const outcomes = match.allOutcomes || [];
+  
+  // Group outcomes by type
+  const outcome1X2 = outcomes.find((o) => o.label === "1" && o.type === "1x2");
+  const outcomeX = outcomes.find((o) => o.label === "X" && o.type === "1x2");
+  const outcome2 = outcomes.find((o) => o.label === "2" && o.type === "1x2");
+  const totalOver = outcomes.find((o) => o.type === "total" && o.label === "Тотал Б");
+  const totalValue = totalOver?.value || outcomes.find((o) => o.type === "total")?.value || "";
+  const totalUnder = outcomes.find((o) => o.type === "total" && o.label === "Тотал М");
+  const fora1 = outcomes.find((o) => o.type === "fora" && o.label === "Фора 1");
+  const foraValue = fora1?.value || outcomes.find((o) => o.type === "fora")?.value || "";
+  const fora2 = outcomes.find((o) => o.type === "fora" && o.label === "Фора 2");
+
+  return `
+    <div class="match-row" data-match-id="${match.id}">
+      <div class="match-info">
+        <div class="match-league">${match.leagueName}</div>
+        <div class="match-title">${match.home} <span style="opacity:.7">vs</span> ${match.away}</div>
+        <div class="match-time">
+          <span class="pill" style="${
+            match.time === "LIVE"
+              ? "border-color:rgba(248,113,113,.7);color:#f97373;"
+              : ""
+          }">${match.time}</span>
+        </div>
+      </div>
+      <div class="match-odds-row">
+        ${renderOutcomeButton(match, "1", outcome1X2?.odd)}
+        ${renderOutcomeButton(match, "X", outcomeX?.odd)}
+        ${renderOutcomeButton(match, "2", outcome2?.odd)}
+        ${renderOutcomeButton(match, "total_over", totalOver?.odd, "Б")}
+        ${renderOutcomeValue(totalValue)}
+        ${renderOutcomeButton(match, "total_under", totalUnder?.odd, "М")}
+        ${renderOutcomeButton(match, "fora_one", fora1?.odd, "1")}
+        ${renderOutcomeValue(foraValue)}
+        ${renderOutcomeButton(match, "fora_two", fora2?.odd, "2")}
+      </div>
+    </div>
+  `;
+}
+
+function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null) {
+  if (!odd || odd === 0) {
+    return `<div class="outcome-cell outcome-cell-empty">—</div>`;
+  }
+  
+  const label = displayLabel || outcomeKey;
+  const active = state.slip.some(
+    (s) => s.matchId === match.id && s.outcomeKey === outcomeKey
+  );
+  
+  return `
+    <button
+      class="outcome-cell outcome-btn ${active ? "outcome-btn-active" : ""}"
+      data-match-id="${match.id}"
+      data-outcome-key="${outcomeKey}"
+      data-odd="${odd}"
+    >
+      <div class="outcome-value">${formatOdd(odd)}</div>
+    </button>
+  `;
+}
+
+function renderOutcomeValue(value) {
+  if (!value || value === "0") {
+    return `<div class="outcome-cell outcome-cell-value">—</div>`;
+  }
+  return `<div class="outcome-cell outcome-cell-value">${value}</div>`;
 }
 
 function renderOddButton(match, label, odd) {
@@ -157,7 +314,7 @@ function renderSlip() {
           <div class="slip-title">${s.home} – ${s.away}</div>
           <div class="slip-meta">
             <span class="pill" style="border-color:rgba(248,113,113,.7);color:#f97373;">${
-              s.label
+              s.label || s.outcomeKey
             }</span>
             <span class="odd-value">${formatOdd(s.odd)}</span>
           </div>
@@ -197,33 +354,47 @@ function handleLeagueClick(e) {
   if (!btn) return;
   const id = btn.getAttribute("data-league");
   state.activeLeagueId = id || "all";
-  document
-    .querySelectorAll(".league-item")
-    .forEach((it) => it.classList.remove("league-item-active"));
-  btn.classList.add("league-item-active");
-  renderMatches();
+  state.currentPage = 1; // Reset to first page when changing league
+  renderLeagues(); // This will update active state
+  renderMatches(); // This will update subtitle
 }
 
 function handleOddsClick(e) {
-  const btn = e.target.closest(".odd-btn");
+  const btn = e.target.closest(".odd-btn, .outcome-btn");
   if (!btn) return;
   const matchId = btn.getAttribute("data-match-id");
-  const label = btn.getAttribute("data-label");
+  const outcomeKey = btn.getAttribute("data-outcome-key");
+  const label = btn.getAttribute("data-label") || outcomeKey;
   const odd = Number(btn.getAttribute("data-odd"));
   const match = matches.find((m) => m.id === matchId);
-  if (!match || !label) return;
+  if (!match || !odd) return;
 
-  const existingIdx = state.slip.findIndex((s) => s.matchId === matchId);
+  // Map outcomeKey to display label
+  const labelMap = {
+    "1": "П1",
+    "X": "X",
+    "2": "П2",
+    "total_over": "Тотал Б",
+    "total_under": "Тотал М",
+    "fora_one": "Фора 1",
+    "fora_two": "Фора 2"
+  };
+  const displayLabel = labelMap[outcomeKey] || label;
+
+  const existingIdx = state.slip.findIndex(
+    (s) => s.matchId === matchId && s.outcomeKey === outcomeKey
+  );
   const next = {
     matchId: match.id,
-    label,
+    outcomeKey,
+    label: displayLabel,
     odd,
     home: match.home,
     away: match.away,
     leagueName: match.leagueName
   };
   if (existingIdx >= 0) {
-    state.slip[existingIdx] = next;
+    state.slip.splice(existingIdx, 1); // Remove if clicking same
   } else {
     state.slip.unshift(next);
   }
@@ -290,6 +461,45 @@ function init() {
     renderLeagues();
   });
 
+  // Matches search handlers
+  const matchesSearchInput = document.getElementById("matches-search-input");
+  const matchesSearchClear = document.getElementById("matches-search-clear");
+
+  matchesSearchInput.addEventListener("input", (e) => {
+    state.searchQuery = e.target.value;
+    state.currentPage = 1; // Reset to first page when searching
+    renderMatches();
+    
+    // Show/hide clear button
+    if (state.searchQuery.trim()) {
+      matchesSearchClear.style.display = "flex";
+    } else {
+      matchesSearchClear.style.display = "none";
+    }
+  });
+
+  matchesSearchClear.addEventListener("click", () => {
+    matchesSearchInput.value = "";
+    state.searchQuery = "";
+    state.currentPage = 1;
+    matchesSearchClear.style.display = "none";
+    renderMatches();
+    matchesSearchInput.focus();
+  });
+
+  // Pagination handlers
+  document.addEventListener("click", (e) => {
+    const paginationBtn = e.target.closest(".pagination-btn");
+    if (!paginationBtn || paginationBtn.disabled) return;
+    const page = Number(paginationBtn.getAttribute("data-page"));
+    if (page > 0) {
+      state.currentPage = page;
+      renderMatches();
+      // Scroll to top of matches
+      document.getElementById("matches-list").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+
   document.querySelectorAll(".quick-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const amount = Number(btn.getAttribute("data-amount") || "0");
@@ -315,5 +525,8 @@ function init() {
   });
 }
 
-window.addEventListener("DOMContentLoaded", init);
+window.addEventListener("DOMContentLoaded", () => {
+  init();
+  loadMatches();
+});
 
