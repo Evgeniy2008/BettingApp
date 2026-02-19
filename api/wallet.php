@@ -13,14 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $usdt = $stmt->fetch();
     if ($usdt) $wallets['usdt'] = $usdt['setting_value'];
     
-    $stmt->execute(['deposit_wallet_btc']);
-    $btc = $stmt->fetch();
-    if ($btc) $wallets['btc'] = $btc['setting_value'];
-    
-    $stmt->execute(['deposit_wallet_eth']);
-    $eth = $stmt->fetch();
-    if ($eth) $wallets['eth'] = $eth['setting_value'];
-    
     sendJSON([
         'success' => true,
         'wallets' => $wallets

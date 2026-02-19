@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
     telegram_username VARCHAR(255) NULL,
     session_token VARCHAR(64) UNIQUE NOT NULL,
     balance DECIMAL(15, 2) DEFAULT 0.00,
-    credit_limit DECIMAL(15, 2) DEFAULT 250.00,
+    credit_limit DECIMAL(15, 2) DEFAULT 0.00,
+    current_debt DECIMAL(15, 2) DEFAULT 0.00,
     total_staked DECIMAL(15, 2) DEFAULT 0.00,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -70,12 +71,25 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
     INDEX idx_expires_at (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Таблица запросов на увеличение кредитного лимита
+CREATE TABLE IF NOT EXISTS credit_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    requested_limit DECIMAL(15, 2) NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    admin_notes TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Вставка начальных настроек
 -- Пароль по умолчанию: admin123 (без шифрования)
 -- Для изменения используйте админ панель
 INSERT INTO admin_settings (setting_key, setting_value) VALUES
 ('admin_password', 'admin123'),
-('deposit_wallet_usdt', 'TXvQ...demo...p9'),
-('deposit_wallet_btc', 'bc1q...demo...9k'),
-('deposit_wallet_eth', '0x...demo...f2')
+('deposit_wallet_usdt', 'TXvQ...demo...p9')
 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);

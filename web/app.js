@@ -541,10 +541,10 @@ function renderSlip() {
 
   const possibleWinEl = document.getElementById("possible-win");
   if (!state.stake || !slip.length) {
-    possibleWinEl.textContent = "€0.00";
+    possibleWinEl.textContent = "$0.00";
   } else {
     const win = state.stake * totalOdds;
-    possibleWinEl.textContent = "€" + win.toFixed(2);
+    possibleWinEl.textContent = "$" + win.toFixed(2);
   }
 
   const placeBtn = document.getElementById("place-bet-btn");
@@ -618,6 +618,9 @@ function handleOddsClick(e) {
     }
   );
   
+  // Check if there's already ANY bet on this match (different outcome)
+  const existingMatchIdx = state.slip.findIndex((s) => s.matchId === matchId);
+  
   const next = {
     matchId: match.id,
     outcomeKey,
@@ -633,7 +636,11 @@ function handleOddsClick(e) {
   if (existingSameOutcomeIdx >= 0) {
     state.slip.splice(existingSameOutcomeIdx, 1);
   } 
-  // Otherwise, add the new bet (allow multiple bets on same match)
+  // If there's already a bet on this match (different outcome), replace it
+  else if (existingMatchIdx >= 0) {
+    state.slip.splice(existingMatchIdx, 1, next);
+  }
+  // Otherwise, add the new bet
   else {
     state.slip.unshift(next);
   }
@@ -784,7 +791,17 @@ function init() {
 
   document.getElementById("place-bet-btn").addEventListener("click", () => {
     if (!state.slip.length || !state.stake) return;
-    alert("Демо: ставка отправлена (пока без backend).");
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: 'Демо',
+        text: 'Ставка отправлена (пока без backend).',
+        icon: 'info',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#22c55e'
+      });
+    } else {
+      alert("Демо: ставка отправлена (пока без backend).");
+    }
   });
 
   document.getElementById("clear-slip-btn").addEventListener("click", () => {
@@ -1080,6 +1097,9 @@ async function loadMatchDetail(detailUrl, match) {
           }
         );
         
+        // Check if there's already ANY bet on this match (different outcome)
+        const existingMatchIdx = state.slip.findIndex((s) => s.matchId === matchId);
+        
         const next = {
           matchId: matchObj.id,
           outcomeKey,
@@ -1095,7 +1115,11 @@ async function loadMatchDetail(detailUrl, match) {
   if (existingSameOutcomeIdx >= 0) {
     state.slip.splice(existingSameOutcomeIdx, 1);
   } 
-  // Otherwise, add the new bet (allow multiple bets on same match)
+  // If there's already a bet on this match (different outcome), replace it
+  else if (existingMatchIdx >= 0) {
+    state.slip.splice(existingMatchIdx, 1, next);
+  }
+  // Otherwise, add the new bet
   else {
     state.slip.unshift(next);
   }

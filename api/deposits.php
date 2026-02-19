@@ -19,9 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Проверяем, что валюта валидна
-    $validCurrencies = ['USDT', 'BTC', 'ETH'];
-    if (!in_array($currency, $validCurrencies)) {
-        sendJSON(['error' => 'Invalid currency. Allowed: USDT, BTC, ETH'], 400);
+    if ($currency !== 'USDT') {
+        sendJSON(['error' => 'Invalid currency. Only USDT is allowed'], 400);
     }
     
     // Проверяем, что кошелек для этой валюты настроен

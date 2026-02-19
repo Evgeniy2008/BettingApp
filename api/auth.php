@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
                     'telegram_username' => $user['telegram_username'],
                     'balance' => floatval($user['balance']),
                     'credit_limit' => floatval($user['credit_limit']),
+                    'current_debt' => floatval($user['current_debt'] ?? 0),
                     'total_staked' => floatval($user['total_staked'])
                 ]
             ]);
@@ -50,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     $telegramUsername = $data['telegram_username'] ?? null;
     
     try {
-        $stmt = $db->prepare("INSERT INTO users (telegram_id, telegram_username, session_token) VALUES (?, ?, ?)");
+        $stmt = $db->prepare("INSERT INTO users (telegram_id, telegram_username, session_token, credit_limit) VALUES (?, ?, ?, 0.00)");
         $stmt->execute([$telegramId, $telegramUsername, $newToken]);
         $userId = $db->lastInsertId();
         
@@ -69,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
                 'telegram_username' => $user['telegram_username'],
                 'balance' => floatval($user['balance']),
                 'credit_limit' => floatval($user['credit_limit']),
+                'current_debt' => floatval($user['current_debt'] ?? 0),
                 'total_staked' => floatval($user['total_staked'])
             ]
         ]);
@@ -88,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'telegram_username' => $user['telegram_username'],
             'balance' => floatval($user['balance']),
             'credit_limit' => floatval($user['credit_limit']),
+            'current_debt' => floatval($user['current_debt'] ?? 0),
             'total_staked' => floatval($user['total_staked'])
         ]
     ]);

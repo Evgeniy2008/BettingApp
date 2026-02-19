@@ -2,8 +2,92 @@
 const PHP_API_BASE = "/api";
 let currentUser = null;
 
+// Функция для показа уведомлений через SweetAlert2
+function showAlert(title, text, icon = 'info') {
+  return Swal.fire({
+    title: title,
+    text: text,
+    icon: icon,
+    confirmButtonText: 'OK',
+    confirmButtonColor: '#22c55e'
+  });
+}
+
+function showSuccess(title, text) {
+  return showAlert(title, text, 'success');
+}
+
+function showError(title, text) {
+  return showAlert(title, text, 'error');
+}
+
+function showWarning(title, text) {
+  return showAlert(title, text, 'warning');
+}
+
+async function showConfirm(title, text, confirmText = 'Да', cancelText = 'Нет') {
+  const result = await Swal.fire({
+    title: title,
+    text: text,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: cancelText,
+    confirmButtonColor: '#22c55e',
+    cancelButtonColor: '#ef4444'
+  });
+  return result.isConfirmed;
+}
+
+// Функции для показа skeleton loading
+function showBalanceSkeleton() {
+  const balanceEl = document.getElementById('wallet-balance');
+  const creditLimitEl = document.getElementById('wallet-credit-limit');
+  if (balanceEl) balanceEl.innerHTML = '<div class="skeleton-value"></div>';
+  if (creditLimitEl) creditLimitEl.innerHTML = '<div class="skeleton-value"></div>';
+}
+
+function showWalletsSkeleton() {
+  const usdtEl = document.getElementById('wallet-usdt');
+  if (usdtEl) usdtEl.innerHTML = '<div class="skeleton-wallet-address"></div>';
+}
+
+function showDepositsHistorySkeleton() {
+  const el = document.getElementById('wallet-deposits-history');
+  if (!el) return;
+  el.innerHTML = Array(3).fill(0).map(() => `
+    <div class="skeleton-history-item">
+      <div class="skeleton-history-content">
+        <div class="skeleton-history-line"></div>
+        <div class="skeleton-history-line"></div>
+        <div class="skeleton-history-line"></div>
+      </div>
+      <div class="skeleton-history-badge"></div>
+    </div>
+  `).join('');
+}
+
+function showWithdrawalsHistorySkeleton() {
+  const el = document.getElementById('wallet-withdrawals-history');
+  if (!el) return;
+  el.innerHTML = Array(3).fill(0).map(() => `
+    <div class="skeleton-history-item">
+      <div class="skeleton-history-content">
+        <div class="skeleton-history-line"></div>
+        <div class="skeleton-history-line"></div>
+        <div class="skeleton-history-line"></div>
+      </div>
+      <div class="skeleton-history-badge"></div>
+    </div>
+  `).join('');
+}
+
 // Инициализация пользователя
 async function initUser() {
+  // Показываем skeleton для баланса и кошельков перед загрузкой
+  showBalanceSkeleton();
+  showWalletsSkeleton();
+  
   try {
     let telegramData = {};
     if (window.Telegram && window.Telegram.WebApp) {
@@ -50,6 +134,9 @@ async function loadWalletDeposits() {
   const el = document.getElementById('wallet-deposits-history');
   if (!el) return;
   
+  // Показываем skeleton перед загрузкой
+  showDepositsHistorySkeleton();
+  
   try {
     const response = await fetch(`${PHP_API_BASE}/deposits.php`, {
       credentials: 'include'
@@ -73,6 +160,9 @@ async function loadWalletDeposits() {
 async function loadWalletWithdrawals() {
   const el = document.getElementById('wallet-withdrawals-history');
   if (!el) return;
+  
+  // Показываем skeleton перед загрузкой
+  showWithdrawalsHistorySkeleton();
   
   try {
     const response = await fetch(`${PHP_API_BASE}/withdrawals.php`, {
@@ -155,6 +245,9 @@ function renderWalletWithdrawals(withdrawals) {
 }
 
 async function loadUser() {
+  // Показываем skeleton для баланса перед загрузкой
+  showBalanceSkeleton();
+  
   try {
     const response = await fetch(`${PHP_API_BASE}/auth.php`, {
       credentials: 'include'
@@ -174,8 +267,35 @@ function updateUserUI() {
   const balanceEl = document.getElementById('wallet-balance');
   const creditLimitEl = document.getElementById('wallet-credit-limit');
   const profileUsernameEl = document.getElementById('profile-username');
+  const debtContainer = document.getElementById('wallet-debt-container');
+  const currentDebtEl = document.getElementById('wallet-current-debt');
+  
   if (balanceEl) balanceEl.textContent = `$${currentUser.balance.toFixed(2)}`;
   if (creditLimitEl) creditLimitEl.textContent = `$${currentUser.credit_limit.toFixed(2)}`;
+  
+  // Показываем кредитный долг, если он есть
+  const currentDebt = currentUser.current_debt || 0;
+  const btnPayDebt = document.getElementById('btn-pay-debt');
+  if (debtContainer && currentDebtEl) {
+    if (currentDebt > 0) {
+      debtContainer.style.display = 'block';
+      currentDebtEl.textContent = `$${currentDebt.toFixed(2)}`;
+      
+      // Показываем кнопку "Погасить сейчас" только если баланса хватает
+      if (btnPayDebt) {
+        if (currentUser.balance >= currentDebt) {
+          btnPayDebt.style.display = 'block';
+          btnPayDebt.disabled = false;
+        } else {
+          btnPayDebt.style.display = 'none';
+        }
+      }
+    } else {
+      debtContainer.style.display = 'none';
+      if (btnPayDebt) btnPayDebt.style.display = 'none';
+    }
+  }
+  
   if (profileUsernameEl) {
     profileUsernameEl.textContent = currentUser.telegram_username 
       ? `@${currentUser.telegram_username}` 
@@ -184,6 +304,9 @@ function updateUserUI() {
 }
 
 async function loadWallets() {
+  // Показываем skeleton перед загрузкой
+  showWalletsSkeleton();
+  
   try {
     const response = await fetch(`${PHP_API_BASE}/wallet.php`, {
       credentials: 'include'
@@ -191,14 +314,132 @@ async function loadWallets() {
     const data = await response.json();
     if (data.success && data.wallets) {
       const usdtEl = document.getElementById('wallet-usdt');
-      const btcEl = document.getElementById('wallet-btc');
-      const ethEl = document.getElementById('wallet-eth');
-      if (usdtEl) usdtEl.textContent = data.wallets.usdt || 'Не настроен';
-      if (btcEl) btcEl.textContent = data.wallets.btc || 'Не настроен';
-      if (ethEl) ethEl.textContent = data.wallets.eth || 'Не настроен';
+      const copyBtn = document.getElementById('copy-main-wallet');
+      const address = data.wallets.usdt || 'Не настроен';
+      
+      if (usdtEl) usdtEl.textContent = address;
+      
+      // Настраиваем кнопку копирования
+      if (copyBtn) {
+        if (address && address !== 'Не настроен') {
+          copyBtn.style.display = 'inline-block';
+          // Сохраняем оригинальный адрес в data-атрибут (в нижнем регистре)
+          const originalAddress = address.toLowerCase().trim();
+          copyBtn.setAttribute('data-wallet-address', originalAddress);
+          // Удаляем старые обработчики и устанавливаем новый
+          copyBtn.onclick = null;
+          // Удаляем все обработчики через клонирование
+          if (copyBtn.parentNode) {
+            const newBtn = copyBtn.cloneNode(true);
+            copyBtn.parentNode.replaceChild(newBtn, copyBtn);
+            // Устанавливаем обработчик на новую кнопку
+            newBtn.onclick = function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              let addressToCopy = this.getAttribute('data-wallet-address');
+              if (!addressToCopy) {
+                addressToCopy = originalAddress;
+              }
+              console.log('Copying address:', addressToCopy); // Отладка
+              if (addressToCopy && addressToCopy !== 'не настроен' && addressToCopy !== 'Не настроен') {
+                copyToClipboard(addressToCopy, this);
+              } else {
+                showError('Ошибка', 'Адрес не загружен');
+              }
+            };
+          } else {
+            // Если нет родителя, устанавливаем напрямую
+            copyBtn.onclick = function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              const addressToCopy = originalAddress;
+              if (addressToCopy && addressToCopy !== 'не настроен') {
+                copyToClipboard(addressToCopy, this);
+              } else {
+                alert('Адрес не загружен');
+              }
+            };
+          }
+        } else {
+          copyBtn.style.display = 'none';
+        }
+      }
     }
   } catch (err) {
     console.error('Failed to load wallets:', err);
+    const usdtEl = document.getElementById('wallet-usdt');
+    if (usdtEl) usdtEl.textContent = 'Ошибка загрузки';
+  }
+}
+
+function copyToClipboard(text, button) {
+  // Очищаем текст от лишних пробелов
+  const cleanText = String(text || '').trim();
+  
+  if (!cleanText || cleanText === 'Не настроен' || cleanText === 'НЕ НАСТРОЕН' || 
+      cleanText === 'Ошибка загрузки' || cleanText === 'ОШИБКА ЗАГРУЗКИ' || 
+      cleanText === 'Загрузка...') {
+    showError('Ошибка', 'Адрес недоступен для копирования');
+    return;
+  }
+  
+  // Пробуем использовать современный API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cleanText).then(() => {
+      const originalText = button.textContent;
+      button.textContent = 'Скопировано!';
+      button.style.color = '#22c55e';
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.color = '';
+      }, 2000);
+    }).catch((err) => {
+      console.error('Clipboard API failed:', err);
+      // Fallback для старых браузеров
+      fallbackCopy(cleanText, button);
+    });
+  } else {
+    // Fallback для старых браузеров
+    fallbackCopy(cleanText, button);
+  }
+}
+
+function fallbackCopy(text, button) {
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.top = '0';
+    textarea.style.left = '0';
+    textarea.style.width = '2em';
+    textarea.style.height = '2em';
+    textarea.style.padding = '0';
+    textarea.style.border = 'none';
+    textarea.style.outline = 'none';
+    textarea.style.boxShadow = 'none';
+    textarea.style.background = 'transparent';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    
+    if (successful) {
+      const originalText = button.textContent;
+      button.textContent = 'Скопировано!';
+      button.style.color = '#22c55e';
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.color = '';
+      }, 2000);
+    } else {
+      showError('Ошибка копирования', 'Не удалось скопировать адрес. Скопируйте вручную: ' + text);
+    }
+  } catch (err) {
+    console.error('Fallback copy failed:', err);
+    alert('Не удалось скопировать адрес. Скопируйте вручную: ' + text);
   }
 }
 
@@ -212,20 +453,19 @@ async function submitDeposit(amount, transactionHash, currency) {
     });
     const data = await response.json();
     if (data.success) {
-      alert('Заявка на пополнение отправлена! Ожидайте подтверждения администратора.');
+      showSuccess('Заявка отправлена', 'Заявка на пополнение отправлена! Ожидайте подтверждения администратора.');
       closeDepositModal();
       loadUser();
       loadWalletHistory();
     } else {
-      alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+      showError('Ошибка', data.error || 'Неизвестная ошибка');
     }
   } catch (err) {
-    alert('Ошибка отправки заявки: ' + err.message);
+    showError('Ошибка', 'Ошибка отправки заявки: ' + err.message);
   }
 }
 
 async function updateDepositWalletAddress() {
-  const currency = document.getElementById('deposit-currency').value.toLowerCase();
   const addressEl = document.getElementById('deposit-wallet-address');
   const copyBtn = document.getElementById('copy-wallet-address');
   
@@ -238,37 +478,51 @@ async function updateDepositWalletAddress() {
     const data = await response.json();
     
     if (data.success && data.wallets) {
-      const address = data.wallets[currency] || 'Не настроен';
+      const address = data.wallets.usdt || 'Не настроен';
+      // Сохраняем оригинальный адрес (в нижнем регистре для копирования)
+      const originalAddress = address && address !== 'Не настроен' ? address.toLowerCase().trim() : null;
       addressEl.textContent = address.toUpperCase();
       
-      // Показываем/скрываем кнопку копирования
+      // Настраиваем кнопку копирования
       if (copyBtn) {
-        if (address && address !== 'Не настроен') {
+        if (originalAddress) {
           copyBtn.style.display = 'inline-block';
-          copyBtn.onclick = () => {
-            navigator.clipboard.writeText(address).then(() => {
-              const originalText = copyBtn.textContent;
-              copyBtn.textContent = 'Скопировано!';
-              setTimeout(() => {
-                copyBtn.textContent = originalText;
-              }, 2000);
-            }).catch(() => {
-              // Fallback для старых браузеров
-              const textarea = document.createElement('textarea');
-              textarea.value = address;
-              textarea.style.position = 'fixed';
-              textarea.style.opacity = '0';
-              document.body.appendChild(textarea);
-              textarea.select();
-              document.execCommand('copy');
-              document.body.removeChild(textarea);
-              const originalText = copyBtn.textContent;
-              copyBtn.textContent = 'Скопировано!';
-              setTimeout(() => {
-                copyBtn.textContent = originalText;
-              }, 2000);
-            });
-          };
+          // Сохраняем оригинальный адрес в data-атрибут
+          copyBtn.setAttribute('data-wallet-address', originalAddress);
+          // Удаляем старые обработчики и устанавливаем новый
+          copyBtn.onclick = null;
+          // Удаляем все обработчики через клонирование
+          if (copyBtn.parentNode) {
+            const newBtn = copyBtn.cloneNode(true);
+            copyBtn.parentNode.replaceChild(newBtn, copyBtn);
+            // Устанавливаем обработчик на новую кнопку
+            newBtn.onclick = function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              let addressToCopy = this.getAttribute('data-wallet-address');
+              if (!addressToCopy) {
+                addressToCopy = originalAddress;
+              }
+              console.log('Copying address:', addressToCopy); // Отладка
+              if (addressToCopy && addressToCopy !== 'не настроен' && addressToCopy !== 'Не настроен') {
+                copyToClipboard(addressToCopy, this);
+              } else {
+                showError('Ошибка', 'Адрес не загружен');
+              }
+            };
+          } else {
+            // Если нет родителя, устанавливаем напрямую
+            copyBtn.onclick = function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              const addressToCopy = originalAddress;
+              if (addressToCopy && addressToCopy !== 'не настроен') {
+                copyToClipboard(addressToCopy, this);
+              } else {
+                alert('Адрес не загружен');
+              }
+            };
+          }
         } else {
           copyBtn.style.display = 'none';
         }
@@ -278,6 +532,7 @@ async function updateDepositWalletAddress() {
       if (copyBtn) copyBtn.style.display = 'none';
     }
   } catch (err) {
+    console.error('Failed to load wallet address:', err);
     addressEl.textContent = 'ОШИБКА ЗАГРУЗКИ';
     if (copyBtn) copyBtn.style.display = 'none';
   }
@@ -293,19 +548,38 @@ async function submitWithdrawal(amount, walletAddress, currency) {
     });
     const data = await response.json();
     if (data.success) {
-      alert('Заявка на вывод отправлена! Ожидайте подтверждения администратора.');
+      showSuccess('Заявка отправлена', 'Заявка на вывод отправлена! Ожидайте подтверждения администратора.');
       closeWithdrawalModal();
       loadUser();
       loadWalletHistory();
     } else {
-      alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+      showError('Ошибка', data.error || 'Неизвестная ошибка');
     }
   } catch (err) {
-    alert('Ошибка отправки заявки: ' + err.message);
+    showError('Ошибка', 'Ошибка отправки заявки: ' + err.message);
   }
 }
 
 async function loadDepositHistory() {
+  // Показываем модальное окно с skeleton
+  const modal = document.getElementById('history-modal');
+  const titleEl = document.getElementById('history-modal-title');
+  const bodyEl = document.getElementById('history-modal-body');
+  if (modal && titleEl && bodyEl) {
+    titleEl.textContent = 'История пополнений';
+    bodyEl.innerHTML = Array(5).fill(0).map(() => `
+      <div class="skeleton-history-item">
+        <div class="skeleton-history-content">
+          <div class="skeleton-history-line"></div>
+          <div class="skeleton-history-line"></div>
+          <div class="skeleton-history-line"></div>
+        </div>
+        <div class="skeleton-history-badge"></div>
+      </div>
+    `).join('');
+    modal.style.display = 'flex';
+  }
+  
   try {
     const response = await fetch(`${PHP_API_BASE}/deposits.php`, {
       credentials: 'include'
@@ -313,13 +587,39 @@ async function loadDepositHistory() {
     const data = await response.json();
     if (data.success) {
       showHistoryModal('История пополнений', data.deposits, 'deposit');
+    } else {
+      if (bodyEl) {
+        bodyEl.innerHTML = '<div class="subcard"><div class="label" style="color: rgba(248,113,113,0.9);">Ошибка: ' + (data.error || 'Неизвестная ошибка') + '</div></div>';
+      }
     }
   } catch (err) {
-    alert('Ошибка загрузки истории: ' + err.message);
+    console.error('Failed to load deposit history:', err);
+    if (bodyEl) {
+      bodyEl.innerHTML = '<div class="subcard"><div class="label" style="color: rgba(248,113,113,0.9);">Ошибка загрузки: ' + err.message + '</div></div>';
+    }
   }
 }
 
 async function loadWithdrawalHistory() {
+  // Показываем модальное окно с skeleton
+  const modal = document.getElementById('history-modal');
+  const titleEl = document.getElementById('history-modal-title');
+  const bodyEl = document.getElementById('history-modal-body');
+  if (modal && titleEl && bodyEl) {
+    titleEl.textContent = 'История выводов';
+    bodyEl.innerHTML = Array(5).fill(0).map(() => `
+      <div class="skeleton-history-item">
+        <div class="skeleton-history-content">
+          <div class="skeleton-history-line"></div>
+          <div class="skeleton-history-line"></div>
+          <div class="skeleton-history-line"></div>
+        </div>
+        <div class="skeleton-history-badge"></div>
+      </div>
+    `).join('');
+    modal.style.display = 'flex';
+  }
+  
   try {
     const response = await fetch(`${PHP_API_BASE}/withdrawals.php`, {
       credentials: 'include'
@@ -327,9 +627,16 @@ async function loadWithdrawalHistory() {
     const data = await response.json();
     if (data.success) {
       showHistoryModal('История выводов', data.withdrawals, 'withdrawal');
+    } else {
+      if (bodyEl) {
+        bodyEl.innerHTML = '<div class="subcard"><div class="label" style="color: rgba(248,113,113,0.9);">Ошибка: ' + (data.error || 'Неизвестная ошибка') + '</div></div>';
+      }
     }
   } catch (err) {
-    alert('Ошибка загрузки истории: ' + err.message);
+    console.error('Failed to load withdrawal history:', err);
+    if (bodyEl) {
+      bodyEl.innerHTML = '<div class="subcard"><div class="label" style="color: rgba(248,113,113,0.9);">Ошибка загрузки: ' + err.message + '</div></div>';
+    }
   }
 }
 
@@ -399,6 +706,139 @@ function closeHistoryModal() {
   if (modal) modal.style.display = 'none';
 }
 
+// Функции для кредитования
+function openCreditRequestModal() {
+  const modal = document.getElementById('credit-request-modal');
+  const currentLimitEl = document.getElementById('current-credit-limit');
+  if (modal && currentUser) {
+    if (currentLimitEl) currentLimitEl.textContent = `$${currentUser.credit_limit.toFixed(2)}`;
+    modal.style.display = 'flex';
+  }
+}
+
+function closeCreditRequestModal() {
+  const modal = document.getElementById('credit-request-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    const requestedLimitEl = document.getElementById('requested-credit-limit');
+    if (requestedLimitEl) requestedLimitEl.value = '';
+  }
+}
+
+async function submitCreditRequest() {
+  const requestedLimit = parseFloat(document.getElementById('requested-credit-limit').value);
+  
+  if (!requestedLimit || requestedLimit <= 0) {
+    showWarning('Ошибка', 'Введите корректную сумму');
+    return;
+  }
+  
+  if (currentUser && requestedLimit <= currentUser.credit_limit) {
+    showWarning('Ошибка', 'Новый лимит должен быть больше текущего');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${PHP_API_BASE}/credit_requests.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requested_limit: requestedLimit }),
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+      showSuccess('Запрос отправлен', 'Запрос на увеличение кредита отправлен! Ожидайте подтверждения администратора.');
+      closeCreditRequestModal();
+      loadUser();
+    } else {
+      showError('Ошибка', data.error || 'Неизвестная ошибка');
+    }
+  } catch (err) {
+    alert('Ошибка отправки запроса: ' + err.message);
+  }
+}
+
+async function payDebt() {
+  if (!currentUser || !currentUser.current_debt || currentUser.current_debt <= 0) {
+    showError('Ошибка', 'У вас нет долга для погашения');
+    return;
+  }
+  
+  if (currentUser.balance < currentUser.current_debt) {
+    showError('Недостаточно средств', `Для погашения долга нужно $${currentUser.current_debt.toFixed(2)}, у вас на балансе $${currentUser.balance.toFixed(2)}`);
+    return;
+  }
+  
+  const confirmed = await showConfirm(
+    'Погасить долг?',
+    `Вы уверены, что хотите погасить долг $${currentUser.current_debt.toFixed(2)}? С баланса будет списано $${currentUser.current_debt.toFixed(2)}.`,
+    'Погасить',
+    'Отмена'
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    const response = await fetch(`${PHP_API_BASE}/pay_debt.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    if (data.success) {
+      await showSuccess('Долг погашен', `Долг $${data.debt_paid.toFixed(2)} успешно погашен. Новый баланс: $${data.new_balance.toFixed(2)}`);
+      loadUser();
+    } else {
+      showError('Ошибка', data.error || 'Неизвестная ошибка');
+    }
+  } catch (err) {
+    showError('Ошибка', 'Ошибка погашения долга: ' + err.message);
+  }
+}
+
+async function showCreditStatus() {
+  try {
+    const response = await fetch(`${PHP_API_BASE}/credit_requests.php`, {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      const requests = data.requests || [];
+      if (requests.length === 0) {
+        showInfo('Информация', 'У вас нет запросов на увеличение кредита');
+        return;
+      }
+      
+      const latestRequest = requests[0];
+      const statusMap = {
+        'pending': 'Ожидание',
+        'approved': 'Подтверждено',
+        'rejected': 'Отклонено'
+      };
+      
+      let message = `Запрошенный лимит: $${latestRequest.requested_limit.toFixed(2)}\n`;
+      message += `Статус: ${statusMap[latestRequest.status] || latestRequest.status}\n`;
+      if (latestRequest.admin_notes) {
+        message += `Примечание: ${latestRequest.admin_notes}\n`;
+      }
+      message += `Дата: ${new Date(latestRequest.created_at).toLocaleString('ru-RU')}`;
+      
+      showInfo('Статус запроса', message);
+    } else {
+      showError('Ошибка', 'Ошибка загрузки статуса: ' + (data.error || 'Неизвестная ошибка'));
+    }
+  } catch (err) {
+    showError('Ошибка', 'Ошибка загрузки статуса: ' + err.message);
+  }
+}
+
+function showInfo(title, text) {
+  return showAlert(title, text, 'info');
+}
+
 // Инициализация обработчиков
 document.addEventListener('DOMContentLoaded', () => {
   initUser();
@@ -425,8 +865,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const amount = parseFloat(document.getElementById('deposit-amount').value);
     const hash = document.getElementById('deposit-hash').value.trim();
     const currency = document.getElementById('deposit-currency').value;
-    if (!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
-    if (!hash) { alert('Введите хэш транзакции'); return; }
+    if (!amount || amount <= 0) { showWarning('Ошибка', 'Введите корректную сумму'); return; }
+    if (!hash) { showWarning('Ошибка', 'Введите хэш транзакции'); return; }
     submitDeposit(amount, hash, currency);
   });
   
@@ -441,12 +881,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const amount = parseFloat(document.getElementById('withdrawal-amount').value);
     const wallet = document.getElementById('withdrawal-wallet').value.trim();
     const currency = document.getElementById('withdrawal-currency').value;
-    if (!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
-    if (!wallet) { alert('Введите адрес кошелька'); return; }
-    if (currentUser && currentUser.balance < amount) { alert('Недостаточно средств на балансе'); return; }
+    if (!amount || amount <= 0) { showWarning('Ошибка', 'Введите корректную сумму'); return; }
+    if (!wallet) { showWarning('Ошибка', 'Введите адрес кошелька'); return; }
+    if (currentUser && currentUser.balance < amount) { showError('Ошибка', 'Недостаточно средств на балансе'); return; }
     submitWithdrawal(amount, wallet, currency);
   });
   if (historyModalClose) historyModalClose.addEventListener('click', closeHistoryModal);
+  
+  // Обработчики для кредитования
+  const btnRequestLimit = document.getElementById('btn-request-limit');
+  const btnCreditStatus = document.getElementById('btn-credit-status');
+  const btnPayDebt = document.getElementById('btn-pay-debt');
+  const creditRequestModal = document.getElementById('credit-request-modal');
+  const creditRequestModalClose = document.getElementById('credit-request-modal-close');
+  const creditRequestCancel = document.getElementById('credit-request-cancel');
+  const creditRequestSubmit = document.getElementById('credit-request-submit');
+  
+  if (btnRequestLimit) btnRequestLimit.addEventListener('click', openCreditRequestModal);
+  if (btnCreditStatus) btnCreditStatus.addEventListener('click', showCreditStatus);
+  if (btnPayDebt) btnPayDebt.addEventListener('click', payDebt);
+  if (creditRequestModalClose) creditRequestModalClose.addEventListener('click', closeCreditRequestModal);
+  if (creditRequestCancel) creditRequestCancel.addEventListener('click', closeCreditRequestModal);
+  if (creditRequestSubmit) creditRequestSubmit.addEventListener('click', submitCreditRequest);
+  if (creditRequestModal) creditRequestModal.querySelector('.modal-overlay')?.addEventListener('click', closeCreditRequestModal);
   
   const depositModal = document.getElementById('deposit-modal');
   const withdrawalModal = document.getElementById('withdrawal-modal');
@@ -463,6 +920,14 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => {
         const walletPage = document.querySelector('main[data-page="wallet"]');
         if (walletPage && !walletPage.classList.contains('page-hidden')) {
+          // Показываем skeleton для баланса и кошельков, если они еще не загружены
+          const balanceEl = document.getElementById('wallet-balance');
+          if (balanceEl && (!balanceEl.textContent || balanceEl.textContent === '$0.00' || balanceEl.querySelector('.skeleton-value'))) {
+            showBalanceSkeleton();
+            showWalletsSkeleton();
+            loadUser();
+            loadWallets();
+          }
           loadWalletHistory();
         }
       }, 100);

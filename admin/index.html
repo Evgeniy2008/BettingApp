@@ -7,6 +7,9 @@
     <title>Bets Admin</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Include the Dark theme -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@sweetalert2/theme-dark@5/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.js"></script>
   </head>
   <body>
     <div class="app">
@@ -25,6 +28,7 @@
         <button class="tab" data-tab="users">Users</button>
         <button class="tab" data-tab="deposits">Deposits</button>
         <button class="tab" data-tab="payouts">Payouts</button>
+        <button class="tab" data-tab="credits">Credits</button>
         <button class="tab" data-tab="settings">Settings</button>
       </nav>
 
@@ -110,27 +114,44 @@
         </section>
       </main>
 
+      <main class="page page-hidden" data-page="credits">
+        <section class="card">
+          <h2>Credit Requests</h2>
+          <p>Подтверждение запросов на увеличение кредитного лимита.</p>
+          <div class="mt">
+            <input id="credits-search" class="input" placeholder="Search credit requests..." />
+          </div>
+          <div class="grid-3 mt">
+            <div class="subcard">
+              <div class="label">Pending</div>
+              <div class="value-large" id="cstat-pending">0</div>
+            </div>
+            <div class="subcard">
+              <div class="label">Approved</div>
+              <div class="value-large" id="cstat-approved">0</div>
+            </div>
+            <div class="subcard">
+              <div class="label">Rejected</div>
+              <div class="value-large" id="cstat-rejected">0</div>
+            </div>
+          </div>
+          <div class="table mt" id="credits-table"></div>
+        </section>
+      </main>
+
       <main class="page page-hidden" data-page="settings">
         <section class="card">
           <h2>Settings</h2>
           <p>Управление кошельками и паролем администратора.</p>
           
           <div class="subcard mt">
-            <h3 style="margin-top: 0;">Кошельки для пополнения</h3>
+            <h3 style="margin-top: 0;">Кошелек для пополнения</h3>
             <div class="mt">
               <div class="label">USDT (TRC20)</div>
               <input type="text" id="wallet-usdt" class="input" placeholder="USDT wallet address" />
             </div>
-            <div class="mt">
-              <div class="label">BTC</div>
-              <input type="text" id="wallet-btc" class="input" placeholder="BTC wallet address" />
-            </div>
-            <div class="mt">
-              <div class="label">ETH</div>
-              <input type="text" id="wallet-eth" class="input" placeholder="ETH wallet address" />
-            </div>
             <div class="actions-row mt">
-              <button class="primary-btn" id="btn-save-wallets">Сохранить кошельки</button>
+              <button class="primary-btn" id="btn-save-wallets">Сохранить кошелек</button>
             </div>
           </div>
 
