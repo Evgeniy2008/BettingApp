@@ -25,7 +25,7 @@ function showWarning(title, text) {
   return showAlert(title, text, 'warning');
 }
 
-async function showConfirm(title, text, confirmText = 'Да', cancelText = 'Нет') {
+async function showConfirm(title, text, confirmText = 'Yes', cancelText = 'No') {
   const result = await Swal.fire({
     title: title,
     text: text,
@@ -146,14 +146,14 @@ async function loadWalletDeposits() {
     
     if (!response.ok || !data.success) {
       const errorMsg = data.error || `HTTP ${response.status}`;
-      el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Ошибка: ' + errorMsg + '</div>';
+      el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Error: ' + errorMsg + '</div>';
       return;
     }
     
     renderWalletDeposits(data.deposits);
   } catch (err) {
     console.error('Failed to load deposits:', err);
-    el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Ошибка загрузки: ' + err.message + '</div>';
+    el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Loading error: ' + err.message + '</div>';
   }
 }
 
@@ -173,14 +173,14 @@ async function loadWalletWithdrawals() {
     
     if (!response.ok || !data.success) {
       const errorMsg = data.error || `HTTP ${response.status}`;
-      el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Ошибка: ' + errorMsg + '</div>';
+      el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Error: ' + errorMsg + '</div>';
       return;
     }
     
     renderWalletWithdrawals(data.withdrawals);
   } catch (err) {
     console.error('Failed to load withdrawals:', err);
-    el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Ошибка загрузки: ' + err.message + '</div>';
+    el.innerHTML = '<div class="label" style="color: rgba(248,113,113,0.9);">Loading error: ' + err.message + '</div>';
   }
 }
 
@@ -189,14 +189,14 @@ function renderWalletDeposits(deposits) {
   if (!el) return;
   
   if (!deposits || deposits.length === 0) {
-    el.innerHTML = '<div class="label" style="color: rgba(232, 232, 234, 0.5);">История пуста</div>';
+    el.innerHTML = '<div class="label" style="color: rgba(232, 232, 234, 0.5);">History is empty</div>';
     return;
   }
   
   const statusMap = {
-    'pending': { text: 'Ожидание', class: 'badge badge-pending' },
-    'approved': { text: 'Подтверждено', class: 'badge badge-approved' },
-    'rejected': { text: 'Отклонено', class: 'badge badge-rejected' }
+    'pending': { text: 'Pending', class: 'badge badge-pending' },
+    'approved': { text: 'Approved', class: 'badge badge-approved' },
+    'rejected': { text: 'Rejected', class: 'badge badge-rejected' }
   };
   
   el.innerHTML = deposits.slice(0, 5).map(item => {
@@ -221,14 +221,14 @@ function renderWalletWithdrawals(withdrawals) {
   if (!el) return;
   
   if (!withdrawals || withdrawals.length === 0) {
-    el.innerHTML = '<div class="label" style="color: rgba(232, 232, 234, 0.5);">История пуста</div>';
+    el.innerHTML = '<div class="label" style="color: rgba(232, 232, 234, 0.5);">History is empty</div>';
     return;
   }
   
   const statusMap = {
-    'pending': { text: 'Ожидание', class: 'badge badge-pending' },
-    'approved': { text: 'Подтверждено', class: 'badge badge-approved' },
-    'rejected': { text: 'Отклонено', class: 'badge badge-rejected' }
+    'pending': { text: 'Pending', class: 'badge badge-pending' },
+    'approved': { text: 'Approved', class: 'badge badge-approved' },
+    'rejected': { text: 'Rejected', class: 'badge badge-rejected' }
   };
   
   el.innerHTML = withdrawals.slice(0, 5).map(item => {
@@ -303,7 +303,7 @@ function updateUserUI() {
   if (profileUsernameEl) {
     profileUsernameEl.textContent = currentUser.telegram_username 
       ? `@${currentUser.telegram_username}` 
-      : (currentUser.telegram_id ? `ID: ${currentUser.telegram_id}` : 'Гость');
+      : (currentUser.telegram_id ? `ID: ${currentUser.telegram_id}` : 'Guest');
   }
 }
 
@@ -319,13 +319,13 @@ async function loadWallets() {
     if (data.success && data.wallets) {
       const usdtEl = document.getElementById('wallet-usdt');
       const copyBtn = document.getElementById('copy-main-wallet');
-      const address = data.wallets.usdt || 'Не настроен';
+      const address = data.wallets.usdt || 'Not configured';
       
       if (usdtEl) usdtEl.textContent = address;
       
       // Настраиваем кнопку копирования
       if (copyBtn) {
-        if (address && address !== 'Не настроен') {
+        if (address && address !== 'Not configured') {
           copyBtn.style.display = 'inline-block';
           // Сохраняем оригинальный адрес в data-атрибут (в нижнем регистре)
           const originalAddress = address.toLowerCase().trim();
@@ -345,10 +345,10 @@ async function loadWallets() {
                 addressToCopy = originalAddress;
               }
               console.log('Copying address:', addressToCopy); // Отладка
-              if (addressToCopy && addressToCopy !== 'не настроен' && addressToCopy !== 'Не настроен') {
+              if (addressToCopy && addressToCopy !== 'not configured' && addressToCopy !== 'Not configured') {
                 copyToClipboard(addressToCopy, this);
               } else {
-                showError('Ошибка', 'Адрес не загружен');
+                showError('Error', 'Address not loaded');
               }
             };
           } else {
@@ -357,10 +357,10 @@ async function loadWallets() {
               e.preventDefault();
               e.stopPropagation();
               const addressToCopy = originalAddress;
-              if (addressToCopy && addressToCopy !== 'не настроен') {
+              if (addressToCopy && addressToCopy !== 'not configured') {
                 copyToClipboard(addressToCopy, this);
               } else {
-                alert('Адрес не загружен');
+                alert('Address not loaded');
               }
             };
           }
@@ -372,7 +372,7 @@ async function loadWallets() {
   } catch (err) {
     console.error('Failed to load wallets:', err);
     const usdtEl = document.getElementById('wallet-usdt');
-    if (usdtEl) usdtEl.textContent = 'Ошибка загрузки';
+    if (usdtEl) usdtEl.textContent = 'Loading error';
   }
 }
 
@@ -380,10 +380,10 @@ function copyToClipboard(text, button) {
   // Очищаем текст от лишних пробелов
   const cleanText = String(text || '').trim();
   
-  if (!cleanText || cleanText === 'Не настроен' || cleanText === 'НЕ НАСТРОЕН' || 
-      cleanText === 'Ошибка загрузки' || cleanText === 'ОШИБКА ЗАГРУЗКИ' || 
-      cleanText === 'Загрузка...') {
-    showError('Ошибка', 'Адрес недоступен для копирования');
+  if (!cleanText || cleanText === 'Not configured' || cleanText === 'NOT CONFIGURED' || 
+      cleanText === 'Loading error' || cleanText === 'LOADING ERROR' || 
+      cleanText === 'Loading...') {
+    showError('Error', 'Address is not available for copying');
     return;
   }
   
@@ -439,11 +439,11 @@ function fallbackCopy(text, button) {
         button.style.color = '';
       }, 2000);
     } else {
-      showError('Ошибка копирования', 'Не удалось скопировать адрес. Скопируйте вручную: ' + text);
+      showError('Copy Error', 'Failed to copy address. Copy manually: ' + text);
     }
   } catch (err) {
     console.error('Fallback copy failed:', err);
-    alert('Не удалось скопировать адрес. Скопируйте вручную: ' + text);
+    alert('Failed to copy address. Copy manually: ' + text);
   }
 }
 
@@ -457,12 +457,12 @@ async function submitDeposit(amount, transactionHash, currency) {
     });
     const data = await response.json();
     if (data.success) {
-      showSuccess('Заявка отправлена', 'Заявка на пополнение отправлена! Ожидайте подтверждения администратора.');
+      showSuccess('Request Sent', 'Deposit request sent! Wait for administrator confirmation.');
       closeDepositModal();
       loadUser();
       loadWalletHistory();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
     showError('Ошибка', 'Ошибка отправки заявки: ' + err.message);
@@ -482,9 +482,9 @@ async function updateDepositWalletAddress() {
     const data = await response.json();
     
     if (data.success && data.wallets) {
-      const address = data.wallets.usdt || 'Не настроен';
-      // Сохраняем оригинальный адрес (в нижнем регистре для копирования)
-      const originalAddress = address && address !== 'Не настроен' ? address.toLowerCase().trim() : null;
+      const address = data.wallets.usdt || 'Not configured';
+      // Save original address (lowercase for copying)
+      const originalAddress = address && address !== 'Not configured' ? address.toLowerCase().trim() : null;
       addressEl.textContent = address.toUpperCase();
       
       // Настраиваем кнопку копирования
@@ -508,10 +508,10 @@ async function updateDepositWalletAddress() {
                 addressToCopy = originalAddress;
               }
               console.log('Copying address:', addressToCopy); // Отладка
-              if (addressToCopy && addressToCopy !== 'не настроен' && addressToCopy !== 'Не настроен') {
+              if (addressToCopy && addressToCopy !== 'not configured' && addressToCopy !== 'Not configured') {
                 copyToClipboard(addressToCopy, this);
               } else {
-                showError('Ошибка', 'Адрес не загружен');
+                showError('Error', 'Address not loaded');
               }
             };
           } else {
@@ -520,10 +520,10 @@ async function updateDepositWalletAddress() {
               e.preventDefault();
               e.stopPropagation();
               const addressToCopy = originalAddress;
-              if (addressToCopy && addressToCopy !== 'не настроен') {
+              if (addressToCopy && addressToCopy !== 'not configured') {
                 copyToClipboard(addressToCopy, this);
               } else {
-                alert('Адрес не загружен');
+                alert('Address not loaded');
               }
             };
           }
@@ -532,12 +532,12 @@ async function updateDepositWalletAddress() {
         }
       }
     } else {
-      addressEl.textContent = 'НЕ НАСТРОЕН';
+      addressEl.textContent = 'NOT CONFIGURED';
       if (copyBtn) copyBtn.style.display = 'none';
     }
   } catch (err) {
     console.error('Failed to load wallet address:', err);
-    addressEl.textContent = 'ОШИБКА ЗАГРУЗКИ';
+    addressEl.textContent = 'LOADING ERROR';
     if (copyBtn) copyBtn.style.display = 'none';
   }
 }
@@ -552,12 +552,12 @@ async function submitWithdrawal(amount, walletAddress, currency) {
     });
     const data = await response.json();
     if (data.success) {
-      showSuccess('Заявка отправлена', 'Заявка на вывод отправлена! Ожидайте подтверждения администратора.');
+      showSuccess('Request Sent', 'Withdrawal request sent! Wait for administrator confirmation.');
       closeWithdrawalModal();
       loadUser();
       loadWalletHistory();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
     showError('Ошибка', 'Ошибка отправки заявки: ' + err.message);
@@ -570,7 +570,7 @@ async function loadDepositHistory() {
   const titleEl = document.getElementById('history-modal-title');
   const bodyEl = document.getElementById('history-modal-body');
   if (modal && titleEl && bodyEl) {
-    titleEl.textContent = 'История пополнений';
+    titleEl.textContent = 'Deposit History';
     bodyEl.innerHTML = Array(5).fill(0).map(() => `
       <div class="skeleton-history-item">
         <div class="skeleton-history-content">
@@ -590,7 +590,7 @@ async function loadDepositHistory() {
     });
     const data = await response.json();
     if (data.success) {
-      showHistoryModal('История пополнений', data.deposits, 'deposit');
+      showHistoryModal('Deposit History', data.deposits, 'deposit');
     } else {
       if (bodyEl) {
         bodyEl.innerHTML = '<div class="subcard"><div class="label" style="color: rgba(248,113,113,0.9);">Ошибка: ' + (data.error || 'Неизвестная ошибка') + '</div></div>';
@@ -610,7 +610,7 @@ async function loadWithdrawalHistory() {
   const titleEl = document.getElementById('history-modal-title');
   const bodyEl = document.getElementById('history-modal-body');
   if (modal && titleEl && bodyEl) {
-    titleEl.textContent = 'История выводов';
+    titleEl.textContent = 'Withdrawal History';
     bodyEl.innerHTML = Array(5).fill(0).map(() => `
       <div class="skeleton-history-item">
         <div class="skeleton-history-content">
@@ -630,7 +630,7 @@ async function loadWithdrawalHistory() {
     });
     const data = await response.json();
     if (data.success) {
-      showHistoryModal('История выводов', data.withdrawals, 'withdrawal');
+      showHistoryModal('Withdrawal History', data.withdrawals, 'withdrawal');
     } else {
       if (bodyEl) {
         bodyEl.innerHTML = '<div class="subcard"><div class="label" style="color: rgba(248,113,113,0.9);">Ошибка: ' + (data.error || 'Неизвестная ошибка') + '</div></div>';
@@ -660,7 +660,7 @@ function showHistoryModal(title, items, type) {
     };
     bodyEl.innerHTML = items.map(item => {
       const status = statusMap[item.status] || { text: item.status, class: '' };
-      return `<div class="subcard mt"><div style="display: flex; justify-content: space-between; align-items: center;"><div><div class="label">Сумма: $${item.amount.toFixed(2)} ${type === 'deposit' ? '(' + (item.currency || 'USDT') + ')' : ''}</div>${type === 'deposit' ? `<div class="mono" style="font-size: 10px; margin-top: 4px;">${item.transaction_hash}</div>` : `<div class="mono" style="font-size: 10px; margin-top: 4px;">${item.wallet_address} (${item.currency})</div>`}<div class="label" style="margin-top: 4px; font-size: 10px;">${new Date(item.created_at).toLocaleString('ru-RU')}</div></div><span class="${status.class}">${status.text}</span></div></div>`;
+      return `<div class="subcard mt"><div style="display: flex; justify-content: space-between; align-items: center;"><div><div class="label">Amount: $${item.amount.toFixed(2)} ${type === 'deposit' ? '(' + (item.currency || 'USDT') + ')' : ''}</div>${type === 'deposit' ? `<div class="mono" style="font-size: 10px; margin-top: 4px;">${item.transaction_hash}</div>` : `<div class="mono" style="font-size: 10px; margin-top: 4px;">${item.wallet_address} (${item.currency})</div>`}<div class="label" style="margin-top: 4px; font-size: 10px;">${new Date(item.created_at).toLocaleString('en-US')}</div></div><span class="${status.class}">${status.text}</span></div></div>`;
     }).join('');
   }
   modal.style.display = 'flex';
@@ -733,12 +733,12 @@ async function submitCreditRequest() {
   const requestedLimit = parseFloat(document.getElementById('requested-credit-limit').value);
   
   if (!requestedLimit || requestedLimit <= 0) {
-    showWarning('Ошибка', 'Введите корректную сумму');
+    showWarning('Error', 'Enter a valid amount');
     return;
   }
   
   if (currentUser && requestedLimit <= currentUser.credit_limit) {
-    showWarning('Ошибка', 'Новый лимит должен быть больше текущего');
+    showWarning('Error', 'New limit must be greater than current limit');
     return;
   }
   
@@ -752,33 +752,33 @@ async function submitCreditRequest() {
     
     const data = await response.json();
     if (data.success) {
-      showSuccess('Запрос отправлен', 'Запрос на увеличение кредита отправлен! Ожидайте подтверждения администратора.');
+      showSuccess('Request Sent', 'Credit limit increase request sent! Wait for administrator confirmation.');
       closeCreditRequestModal();
       loadUser();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    alert('Ошибка отправки запроса: ' + err.message);
+    alert('Request sending error: ' + err.message);
   }
 }
 
 async function payDebt() {
   if (!currentUser || !currentUser.current_debt || currentUser.current_debt <= 0) {
-    showError('Ошибка', 'У вас нет долга для погашения');
+    showError('Error', 'You have no debt to pay off');
     return;
   }
   
   if (currentUser.balance < currentUser.current_debt) {
-    showError('Недостаточно средств', `Для погашения долга нужно $${currentUser.current_debt.toFixed(2)}, у вас на балансе $${currentUser.balance.toFixed(2)}`);
+    showError('Insufficient Funds', `To pay off debt you need $${currentUser.current_debt.toFixed(2)}, your balance is $${currentUser.balance.toFixed(2)}`);
     return;
   }
   
   const confirmed = await showConfirm(
-    'Погасить долг?',
-    `Вы уверены, что хотите погасить долг $${currentUser.current_debt.toFixed(2)}? С баланса будет списано $${currentUser.current_debt.toFixed(2)}.`,
-    'Погасить',
-    'Отмена'
+    'Pay Off Debt?',
+    `Are you sure you want to pay off debt $${currentUser.current_debt.toFixed(2)}? $${currentUser.current_debt.toFixed(2)} will be deducted from your balance.`,
+    'Pay Off',
+    'Cancel'
   );
   
   if (!confirmed) return;
@@ -792,13 +792,13 @@ async function payDebt() {
     
     const data = await response.json();
     if (data.success) {
-      await showSuccess('Долг погашен', `Долг $${data.debt_paid.toFixed(2)} успешно погашен. Новый баланс: $${data.new_balance.toFixed(2)}`);
+      await showSuccess('Debt Paid Off', `Debt $${data.debt_paid.toFixed(2)} successfully paid off. New balance: $${data.new_balance.toFixed(2)}`);
       loadUser();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка погашения долга: ' + err.message);
+    showError('Error', 'Debt payment error: ' + err.message);
   }
 }
 
@@ -812,30 +812,30 @@ async function showCreditStatus() {
     if (data.success) {
       const requests = data.requests || [];
       if (requests.length === 0) {
-        showInfo('Информация', 'У вас нет запросов на увеличение кредита');
+        showInfo('Information', 'You have no credit limit increase requests');
         return;
       }
       
       const latestRequest = requests[0];
       const statusMap = {
-        'pending': 'Ожидание',
-        'approved': 'Подтверждено',
-        'rejected': 'Отклонено'
+        'pending': 'Pending',
+        'approved': 'Approved',
+        'rejected': 'Rejected'
       };
       
-      let message = `Запрошенный лимит: $${latestRequest.requested_limit.toFixed(2)}\n`;
-      message += `Статус: ${statusMap[latestRequest.status] || latestRequest.status}\n`;
+      let message = `Requested limit: $${latestRequest.requested_limit.toFixed(2)}\n`;
+      message += `Status: ${statusMap[latestRequest.status] || latestRequest.status}\n`;
       if (latestRequest.admin_notes) {
-        message += `Примечание: ${latestRequest.admin_notes}\n`;
+        message += `Note: ${latestRequest.admin_notes}\n`;
       }
-      message += `Дата: ${new Date(latestRequest.created_at).toLocaleString('ru-RU')}`;
+      message += `Date: ${new Date(latestRequest.created_at).toLocaleString('en-US')}`;
       
-      showInfo('Статус запроса', message);
+      showInfo('Request Status', message);
     } else {
-      showError('Ошибка', 'Ошибка загрузки статуса: ' + (data.error || 'Неизвестная ошибка'));
+      showError('Error', 'Status loading error: ' + (data.error || 'Unknown error'));
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка загрузки статуса: ' + err.message);
+    showError('Error', 'Status loading error: ' + err.message);
   }
 }
 
@@ -870,7 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hash = document.getElementById('deposit-hash').value.trim();
     const currency = document.getElementById('deposit-currency').value;
     if (!amount || amount <= 0) { showWarning('Ошибка', 'Введите корректную сумму'); return; }
-    if (!hash) { showWarning('Ошибка', 'Введите хэш транзакции'); return; }
+    if (!hash) { showWarning('Error', 'Enter transaction hash'); return; }
     submitDeposit(amount, hash, currency);
   });
   
@@ -886,8 +886,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const wallet = document.getElementById('withdrawal-wallet').value.trim();
     const currency = document.getElementById('withdrawal-currency').value;
     if (!amount || amount <= 0) { showWarning('Ошибка', 'Введите корректную сумму'); return; }
-    if (!wallet) { showWarning('Ошибка', 'Введите адрес кошелька'); return; }
-    if (currentUser && currentUser.balance < amount) { showError('Ошибка', 'Недостаточно средств на балансе'); return; }
+    if (!wallet) { showWarning('Error', 'Enter wallet address'); return; }
+    if (currentUser && currentUser.balance < amount) { showError('Error', 'Insufficient balance'); return; }
     submitWithdrawal(amount, wallet, currency);
   });
   if (historyModalClose) historyModalClose.addEventListener('click', closeHistoryModal);

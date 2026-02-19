@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -32,8 +32,8 @@
 
       <nav class="tabs">
         <button class="tab tab-active" data-tab="sportsbook">Sportsbook</button>
-        <button class="tab" data-tab="wallet">Кошелёк</button>
-        <button class="tab" data-tab="profile">Профиль</button>
+        <button class="tab" data-tab="wallet">Wallet</button>
+        <button class="tab" data-tab="profile">Profile</button>
       </nav>
 
       <main class="layout" data-page="sportsbook">
@@ -53,7 +53,7 @@
                 <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M14 14L11.1 11.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <input type="text" id="matches-search-input" class="matches-search-input" placeholder="Поиск по командам, лигам..." />
+              <input type="text" id="matches-search-input" class="matches-search-input" placeholder="Search by teams, leagues..." />
               <button id="matches-search-clear" class="matches-search-clear" style="display: none;">×</button>
             </div>
           </div>
@@ -101,68 +101,68 @@
 
       <main class="page page-hidden" data-page="wallet">
         <section class="card">
-          <h2>Кошелёк</h2>
-          <p>Пополнение криптовалютой, лимиты и запросы на выплаты.</p>
+          <h2>Wallet</h2>
+          <p>Cryptocurrency deposits, limits and withdrawal requests.</p>
           <div class="grid-2">
             <div class="subcard">
-              <div class="label">Баланс</div>
+              <div class="label">Balance</div>
               <div class="value-large" id="wallet-balance">$0.00</div>
             </div>
             <div class="subcard">
-              <div class="label">Кредитный лимит</div>
+              <div class="label">Credit Limit</div>
               <div class="value-large" id="wallet-credit-limit">$0.00</div>
             </div>
           </div>
           <div class="subcard mt" id="wallet-debt-container" style="display: none;">
-            <div class="label" style="color: rgba(248, 113, 113, 0.9);">Кредитный долг</div>
+            <div class="label" style="color: rgba(248, 113, 113, 0.9);">Credit Debt</div>
             <div class="value-large" id="wallet-current-debt" style="color: #f97373;">$0.00</div>
-            <p style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-top: 8px;">Долг будет автоматически погашен при следующем пополнении</p>
+            <p style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-top: 8px;">Debt will be automatically paid off on next deposit</p>
             <div class="actions-row" style="margin-top: 12px;">
-              <button class="primary-btn" id="btn-pay-debt" style="width: 100%;">Погасить сейчас</button>
+              <button class="primary-btn" id="btn-pay-debt" style="width: 100%;">Pay Now</button>
             </div>
           </div>
           <div class="subcard mt">
-            <div class="label">Пополнение криптовалютой</div>
+            <div class="label">Cryptocurrency Deposit</div>
             <div class="wallet-box" style="margin-top: 12px;">
               <div class="label">USDT (TRC20)</div>
-              <div class="mono" id="wallet-usdt">Загрузка...</div>
-              <button id="copy-main-wallet" class="ghost-btn" style="margin-top: 8px; padding: 6px 12px; font-size: 11px; width: auto; display: none;">Копировать адрес</button>
+              <div class="mono" id="wallet-usdt">Loading...</div>
+              <button id="copy-main-wallet" class="ghost-btn" style="margin-top: 8px; padding: 6px 12px; font-size: 11px; width: auto; display: none;">Copy Address</button>
             </div>
             <div class="actions-row">
-              <button class="primary-btn" id="btn-deposit">Я отправил депозит</button>
-              <button class="ghost-btn" id="btn-deposit-history">История пополнений</button>
+              <button class="primary-btn" id="btn-deposit">I Sent Deposit</button>
+              <button class="ghost-btn" id="btn-deposit-history">Deposit History</button>
             </div>
           </div>
           <div class="grid-2 mt">
             <div class="subcard">
-              <div class="label">Запросить лимит</div>
-              <p>Отправьте запрос на увеличение кредитного лимита.</p>
+              <div class="label">Request Limit</div>
+              <p>Send a request to increase your credit limit.</p>
               <div class="actions-row">
-                <button class="primary-btn" id="btn-request-limit">Запросить увеличение</button>
-                <button class="ghost-btn" id="btn-credit-status">Статус</button>
+                <button class="primary-btn" id="btn-request-limit">Request Increase</button>
+                <button class="ghost-btn" id="btn-credit-status">Status</button>
               </div>
             </div>
             <div class="subcard">
-              <div class="label">Запросить выплату</div>
-              <p>Создайте заявку на вывод выигрыша по ставкам.</p>
+              <div class="label">Request Withdrawal</div>
+              <p>Create a withdrawal request for your betting winnings.</p>
               <div class="actions-row">
-                <button class="primary-btn" id="btn-withdrawal">Создать заявку</button>
-                <button class="ghost-btn" id="btn-withdrawal-history">Мои выплаты</button>
+                <button class="primary-btn" id="btn-withdrawal">Create Request</button>
+                <button class="ghost-btn" id="btn-withdrawal-history">My Withdrawals</button>
               </div>
             </div>
           </div>
           
           <div class="subcard mt">
-            <div class="label">История депозитов</div>
+            <div class="label">Deposit History</div>
             <div id="wallet-deposits-history" class="wallet-history-scroll" style="margin-top: 8px;">
-              <div class="loading">Загрузка...</div>
+              <div class="loading">Loading...</div>
             </div>
           </div>
           
           <div class="subcard mt">
-            <div class="label">История выводов</div>
+            <div class="label">Withdrawal History</div>
             <div id="wallet-withdrawals-history" class="wallet-history-scroll" style="margin-top: 8px;">
-              <div class="loading">Загрузка...</div>
+              <div class="loading">Loading...</div>
             </div>
           </div>
         </section>
@@ -170,12 +170,12 @@
 
       <main class="page page-hidden" data-page="profile">
         <section class="card">
-          <h2>Профиль</h2>
-          <p>Telegram-аккаунт и настройки.</p>
+          <h2>Profile</h2>
+          <p>Telegram account and settings.</p>
           <div class="grid-2 mt">
             <div class="wallet-box">
               <div class="label">User</div>
-              <div class="value" id="profile-username">Загрузка...</div>
+              <div class="value" id="profile-username">Loading...</div>
             </div>
             <div class="wallet-box">
               <div class="label">Role</div>
@@ -191,11 +191,11 @@
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="modal-match-title">Детали матча</h2>
+          <h2 id="modal-match-title">Match Details</h2>
           <button class="modal-close" id="modal-close-btn">×</button>
         </div>
         <div class="modal-body" id="modal-body">
-          <div class="loading">Загрузка...</div>
+          <div class="loading">Loading...</div>
         </div>
       </div>
     </div>
@@ -214,32 +214,32 @@
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Пополнение счета</h2>
+          <h2>Deposit</h2>
           <button class="modal-close" id="deposit-modal-close">×</button>
         </div>
         <div class="modal-body">
             <div class="subcard">
-              <div class="label">Валюта</div>
+              <div class="label">Currency</div>
               <select id="deposit-currency" class="input" disabled>
                 <option value="USDT">USDT (TRC20)</option>
               </select>
             <div style="margin-top: 12px; padding: 12px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
-              <div class="label" style="margin-bottom: 6px; font-size: 11px; color: rgba(232, 232, 234, 0.7);">Адрес кошелька для пополнения:</div>
-              <div id="deposit-wallet-address" class="mono" style="font-size: 14px; font-weight: 600; word-break: break-all; color: #f4f4f5; line-height: 1.4;">Загрузка...</div>
-              <button id="copy-wallet-address" class="ghost-btn" style="margin-top: 8px; padding: 6px 12px; font-size: 11px; width: auto;">Копировать адрес</button>
+              <div class="label" style="margin-bottom: 6px; font-size: 11px; color: rgba(232, 232, 234, 0.7);">Wallet address for deposit:</div>
+              <div id="deposit-wallet-address" class="mono" style="font-size: 14px; font-weight: 600; word-break: break-all; color: #f4f4f5; line-height: 1.4;">Loading...</div>
+              <button id="copy-wallet-address" class="ghost-btn" style="margin-top: 8px; padding: 6px 12px; font-size: 11px; width: auto;">Copy Address</button>
             </div>
           </div>
           <div class="subcard mt">
-            <div class="label">Сумма пополнения</div>
-            <input type="number" id="deposit-amount" class="input" placeholder="Введите сумму" min="0" step="0.01" />
+            <div class="label">Deposit Amount</div>
+            <input type="number" id="deposit-amount" class="input" placeholder="Enter amount" min="0" step="0.01" />
           </div>
           <div class="subcard mt">
-            <div class="label">Хэш транзакции</div>
-            <input type="text" id="deposit-hash" class="input" placeholder="Введите хэш транзакции" />
+            <div class="label">Transaction Hash</div>
+            <input type="text" id="deposit-hash" class="input" placeholder="Enter transaction hash" />
           </div>
           <div class="actions-row mt">
-            <button class="primary-btn" id="deposit-submit">Отправить заявку</button>
-            <button class="ghost-btn" id="deposit-cancel">Отмена</button>
+            <button class="primary-btn" id="deposit-submit">Submit Request</button>
+            <button class="ghost-btn" id="deposit-cancel">Cancel</button>
           </div>
         </div>
       </div>
@@ -250,27 +250,27 @@
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Запрос на вывод</h2>
+          <h2>Withdrawal Request</h2>
           <button class="modal-close" id="withdrawal-modal-close">×</button>
         </div>
         <div class="modal-body">
           <div class="subcard">
-            <div class="label">Сумма вывода</div>
-            <input type="number" id="withdrawal-amount" class="input" placeholder="Введите сумму" min="0" step="0.01" />
+            <div class="label">Withdrawal Amount</div>
+            <input type="number" id="withdrawal-amount" class="input" placeholder="Enter amount" min="0" step="0.01" />
           </div>
           <div class="subcard mt">
-            <div class="label">Адрес кошелька</div>
-            <input type="text" id="withdrawal-wallet" class="input" placeholder="Введите адрес кошелька" />
+            <div class="label">Wallet Address</div>
+            <input type="text" id="withdrawal-wallet" class="input" placeholder="Enter wallet address" />
           </div>
             <div class="subcard mt">
-              <div class="label">Валюта</div>
+              <div class="label">Currency</div>
               <select id="withdrawal-currency" class="input" disabled>
                 <option value="USDT">USDT</option>
               </select>
             </div>
           <div class="actions-row mt">
-            <button class="primary-btn" id="withdrawal-submit">Отправить заявку</button>
-            <button class="ghost-btn" id="withdrawal-cancel">Отмена</button>
+            <button class="primary-btn" id="withdrawal-submit">Submit Request</button>
+            <button class="ghost-btn" id="withdrawal-cancel">Cancel</button>
           </div>
         </div>
       </div>
@@ -281,11 +281,11 @@
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h2 id="history-modal-title">История</h2>
+          <h2 id="history-modal-title">History</h2>
           <button class="modal-close" id="history-modal-close">×</button>
         </div>
         <div class="modal-body" id="history-modal-body">
-          <div class="loading">Загрузка...</div>
+          <div class="loading">Loading...</div>
         </div>
       </div>
     </div>
@@ -295,22 +295,22 @@
       <div class="modal-overlay"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Запрос на увеличение кредита</h2>
+          <h2>Credit Limit Increase Request</h2>
           <button class="modal-close" id="credit-request-modal-close">×</button>
         </div>
         <div class="modal-body">
           <div class="subcard">
-            <div class="label">Текущий кредитный лимит</div>
+            <div class="label">Current Credit Limit</div>
             <div class="value-large" id="current-credit-limit">$0.00</div>
           </div>
           <div class="subcard mt">
-            <div class="label">Новый кредитный лимит</div>
-            <input type="number" id="requested-credit-limit" class="input" placeholder="Введите сумму" min="0" step="0.01" />
-            <p style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-top: 8px;">Сумма должна быть больше текущего лимита</p>
+            <div class="label">New Credit Limit</div>
+            <input type="number" id="requested-credit-limit" class="input" placeholder="Enter amount" min="0" step="0.01" />
+            <p style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-top: 8px;">Amount must be greater than current limit</p>
           </div>
           <div class="actions-row mt">
-            <button class="primary-btn" id="credit-request-submit">Отправить запрос</button>
-            <button class="ghost-btn" id="credit-request-cancel">Отмена</button>
+            <button class="primary-btn" id="credit-request-submit">Submit Request</button>
+            <button class="ghost-btn" id="credit-request-cancel">Cancel</button>
           </div>
         </div>
       </div>

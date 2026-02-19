@@ -35,16 +35,16 @@ function showMatchesSkeleton() {
   root.innerHTML = `
     <div class="matches-table">
       <div class="matches-header">
-        <div class="matches-header-info">Матч</div>
+        <div class="matches-header-info">Match</div>
         <div class="matches-header-odds">
-          <span>П1</span>
-          <span>X</span>
-          <span>П2</span>
-          <span>Б</span>
-          <span>Тотал</span>
-          <span>М</span>
           <span>1</span>
-          <span>Фора</span>
+          <span>X</span>
+          <span>2</span>
+          <span>O</span>
+          <span>Total</span>
+          <span>U</span>
+          <span>1</span>
+          <span>Handicap</span>
           <span>2</span>
         </div>
       </div>
@@ -130,8 +130,8 @@ async function loadMatches() {
                                  fetchErr.name === 'TypeError';
           
           const errorMsg = isNetworkError
-            ? `Не удалось подключиться к API на ${API_BASE}. Убедитесь, что сервер запущен. Запустите сервер командой: npm start (в папке bot)`
-            : `Ошибка загрузки данных: ${fetchErr.message}`;
+            ? `Failed to connect to API at ${API_BASE}. Make sure the server is running. Start the server with: npm start (in bot folder)`
+            : `Data loading error: ${fetchErr.message}`;
           
           throw new Error(errorMsg);
         }
@@ -151,7 +151,7 @@ async function loadMatches() {
       // Show error message to user
       const root = document.getElementById("matches-list");
       if (root) {
-        root.innerHTML = '<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Не удалось загрузить матчи. Проверьте консоль браузера (F12).</div></div>';
+        root.innerHTML = '<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Failed to load matches. Check browser console (F12).</div></div>';
       }
       return;
     }
@@ -214,6 +214,11 @@ async function loadMatches() {
         score: m.score
       };
       
+      // Debug: log first few matches to check isLive status
+      if (idx < 5) {
+        console.log(`[Process] Match ${idx + 1}: ${matchObj.home} vs ${matchObj.away}, isLive=${matchObj.isLive}, raw isLive=${m.isLive}`);
+      }
+      
       // Debug logging
       
       return matchObj;
@@ -224,7 +229,22 @@ async function loadMatches() {
     
     // Log processed data
     console.log(`[App] Processed ${matches.length} matches`);
+    const liveMatches = matches.filter(m => m.isLive).length;
+    const nonLiveMatches = matches.filter(m => !m.isLive).length;
+    console.log(`[App] LIVE matches: ${liveMatches}, Non-LIVE matches: ${nonLiveMatches}`);
     console.log(`[App] Sample processed match:`, matches[0]);
+    
+    // Log a few examples of both types
+    const liveExamples = matches.filter(m => m.isLive).slice(0, 2);
+    const nonLiveExamples = matches.filter(m => !m.isLive).slice(0, 2);
+    if (liveExamples.length > 0) {
+      console.log(`[App] LIVE examples:`, liveExamples.map(m => `${m.home} vs ${m.away}`));
+    }
+    if (nonLiveExamples.length > 0) {
+      console.log(`[App] Non-LIVE examples:`, nonLiveExamples.map(m => `${m.home} vs ${m.away}`));
+    } else {
+      console.warn(`[App] ⚠️ No non-LIVE matches found! All matches are marked as LIVE.`);
+    }
     
     // Log summary
     const matchesWithUrl = matches.filter(m => m.detailUrl).length;
@@ -257,7 +277,7 @@ async function loadMatches() {
     console.error('[App] Error loading matches:', err);
     const root = document.getElementById("matches-list");
     if (root) {
-      root.innerHTML = `<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Ошибка загрузки: ${err.message}. Убедитесь, что API запущен на ${API_BASE}</div></div>`;
+      root.innerHTML = `<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Loading error: ${err.message}. Make sure API is running on ${API_BASE}</div></div>`;
     }
     renderLeagues();
     renderMatches();
@@ -306,15 +326,24 @@ function renderLeagues() {
 
 function renderMatches() {
   const root = document.getElementById("matches-list");
+  
+  console.log(`[Render] Total matches: ${matches.length}`);
+  const liveCount = matches.filter(m => m.isLive).length;
+  const nonLiveCount = matches.filter(m => !m.isLive).length;
+  console.log(`[Render] LIVE: ${liveCount}, Non-LIVE: ${nonLiveCount}`);
+  
   let ms =
     state.activeLeagueId === "all"
       ? matches
       : matches.filter((m) => m.leagueId === state.activeLeagueId);
 
+  console.log(`[Render] After league filter (${state.activeLeagueId}): ${ms.length} matches`);
+
   // Apply search filter
   if (state.searchQuery.trim()) {
     const query = state.searchQuery.trim().toLowerCase();
     const queryWords = query.split(/\s+/).filter(w => w.length > 0);
+    const beforeSearch = ms.length;
     ms = ms.filter((m) => {
       const home = (m.home || "").toLowerCase();
       const away = (m.away || "").toLowerCase();
@@ -327,14 +356,18 @@ function renderMatches() {
       
       return allWordsMatch;
     });
+    console.log(`[Render] After search filter: ${ms.length} matches (was ${beforeSearch})`);
   }
 
   // Sort: LIVE matches first, then regular matches
+  const beforeSort = ms.length;
   ms.sort((a, b) => {
     if (a.isLive && !b.isLive) return -1;
     if (!a.isLive && b.isLive) return 1;
     return 0;
   });
+  console.log(`[Render] After sort: ${ms.length} matches`);
+  console.log(`[Render] First 5 matches:`, ms.slice(0, 5).map(m => `${m.home} vs ${m.away} (LIVE: ${m.isLive})`));
 
   // Update content subtitle
   const subtitleEl = document.querySelector(".content-subtitle");
@@ -352,20 +385,23 @@ function renderMatches() {
   const startIdx = (state.currentPage - 1) * state.matchesPerPage;
   const endIdx = startIdx + state.matchesPerPage;
   const paginatedMatches = ms.slice(startIdx, endIdx);
+  
+  console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (${startIdx}-${endIdx} of ${ms.length})`);
+  console.log(`[Render] Paginated matches:`, paginatedMatches.map(m => `${m.home} vs ${m.away} (LIVE: ${m.isLive})`));
 
   root.innerHTML = `
     <div class="matches-table">
       <div class="matches-header">
-        <div class="matches-header-info">Матч</div>
+        <div class="matches-header-info">Match</div>
         <div class="matches-header-odds">
-          <span>П1</span>
-          <span>X</span>
-          <span>П2</span>
-          <span>Б</span>
-          <span>Тотал</span>
-          <span>М</span>
           <span>1</span>
-          <span>Фора</span>
+          <span>X</span>
+          <span>2</span>
+          <span>O</span>
+          <span>Total</span>
+          <span>U</span>
+          <span>1</span>
+          <span>Handicap</span>
           <span>2</span>
         </div>
       </div>
@@ -392,12 +428,12 @@ function renderMatchRow(match) {
   const outcome1X2 = outcomes.find((o) => o.label === "1" && o.type === "1x2");
   const outcomeX = outcomes.find((o) => o.label === "X" && o.type === "1x2");
   const outcome2 = outcomes.find((o) => o.label === "2" && o.type === "1x2");
-  const totalOver = outcomes.find((o) => o.type === "total" && o.label === "Тотал Б");
+  const totalOver = outcomes.find((o) => o.type === "total" && (o.label === "Тотал Б" || o.label.includes("Total O") || o.label.includes("Over")));
   const totalValue = totalOver?.value || outcomes.find((o) => o.type === "total")?.value || "";
-  const totalUnder = outcomes.find((o) => o.type === "total" && o.label === "Тотал М");
-  const fora1 = outcomes.find((o) => o.type === "fora" && o.label === "Фора 1");
+  const totalUnder = outcomes.find((o) => o.type === "total" && (o.label === "Тотал М" || o.label.includes("Total U") || o.label.includes("Under")));
+  const fora1 = outcomes.find((o) => o.type === "fora" && (o.label === "Фора 1" || o.label.includes("Handicap 1")));
   const foraValue = fora1?.value || outcomes.find((o) => o.type === "fora")?.value || "";
-  const fora2 = outcomes.find((o) => o.type === "fora" && o.label === "Фора 2");
+  const fora2 = outcomes.find((o) => o.type === "fora" && (o.label === "Фора 2" || o.label.includes("Handicap 2")));
 
   const isLive = match.isLive || false;
   const liveBadge = isLive ? '<span class="live-badge">LIVE</span>' : '';
@@ -458,11 +494,11 @@ function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null, value 
   
   // Map outcomeKey to display label for mobile
   const labelMap = {
-    "1": "П1",
+    "1": "1",
     "X": "X",
-    "2": "П2",
-    "total_over": "Б",
-    "total_under": "М",
+    "2": "2",
+    "total_over": "O",
+    "total_under": "U",
     "fora_one": "1",
     "fora_two": "2"
   };
@@ -585,7 +621,7 @@ function renderSlip() {
 
   if (!slip.length) {
     root.innerHTML =
-      '<div class="subcard"><div class="label">Выберите исходы в линии, чтобы добавить их в купон.</div></div>';
+      '<div class="subcard"><div class="label">Select outcomes in the line to add them to your betslip.</div></div>';
   } else {
     root.innerHTML = slip
       .map(
@@ -601,7 +637,7 @@ function renderSlip() {
             <span class="odd-value">${formatOdd(s.odd)}</span>
           </div>
         </div>
-        <button class="slip-remove" title="Удалить" aria-label="Удалить ставку">
+        <button class="slip-remove" title="Remove" aria-label="Remove bet">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -870,14 +906,14 @@ function init() {
     if (!state.slip.length || !state.stake) return;
     if (typeof Swal !== 'undefined') {
       Swal.fire({
-        title: 'Демо',
-        text: 'Ставка отправлена (пока без backend).',
+        title: 'Demo',
+        text: 'Bet submitted (no backend yet).',
         icon: 'info',
         confirmButtonText: 'OK',
         confirmButtonColor: '#22c55e'
       });
     } else {
-      alert("Демо: ставка отправлена (пока без backend).");
+      alert("Demo: bet submitted (no backend yet).");
     }
   });
 
@@ -966,7 +1002,7 @@ async function loadMatchDetail(detailUrl, match) {
     const data = await res.json();
     
     if (!data.outcomes || data.outcomes.length === 0) {
-      modalBody.innerHTML = '<div class="loading">Коэффициенты не найдены</div>';
+      modalBody.innerHTML = '<div class="loading">Odds not found</div>';
       return;
     }
     
@@ -993,7 +1029,7 @@ async function loadMatchDetail(detailUrl, match) {
     // 1X2 outcomes
     if (grouped["1x2"].length > 0) {
       html += '<div class="detail-outcome-group">';
-      html += '<div class="detail-outcome-group-title">Исход матча (1X2)</div>';
+      html += '<div class="detail-outcome-group-title">Match Result (1X2)</div>';
       html += '<div class="detail-outcomes-grid">';
       grouped["1x2"].forEach((outcome) => {
         const outcomeKey = outcome.label === "1" ? "1" : outcome.label === "X" ? "X" : "2";
@@ -1030,7 +1066,7 @@ async function loadMatchDetail(detailUrl, match) {
       
       Object.keys(totalsByValue).forEach((value) => {
         html += '<div class="detail-outcome-group">';
-        html += `<div class="detail-outcome-group-title">Тотал ${value}</div>`;
+        html += `<div class="detail-outcome-group-title">Total ${value}</div>`;
         html += '<div class="detail-outcomes-grid">';
         totalsByValue[value].forEach((outcome) => {
           const outcomeKey = outcome.label.includes("Б") || outcome.label.includes("больше") || outcome.label.includes("over") 
@@ -1077,7 +1113,7 @@ async function loadMatchDetail(detailUrl, match) {
       
       Object.keys(forasByValue).forEach((value) => {
         html += '<div class="detail-outcome-group">';
-        html += `<div class="detail-outcome-group-title">Фора ${value}</div>`;
+        html += `<div class="detail-outcome-group-title">Handicap ${value}</div>`;
         html += '<div class="detail-outcomes-grid">';
         forasByValue[value].forEach((outcome) => {
           const outcomeKey = outcome.label.includes("1") || outcome.label.includes("Фора 1")
@@ -1115,7 +1151,7 @@ async function loadMatchDetail(detailUrl, match) {
     // Other outcomes
     if (grouped["other"].length > 0) {
       html += '<div class="detail-outcome-group">';
-      html += '<div class="detail-outcome-group-title">Другие ставки</div>';
+      html += '<div class="detail-outcome-group-title">Other Bets</div>';
       html += '<div class="detail-outcomes-grid">';
       grouped["other"].forEach((outcome, idx) => {
         const outcomeKey = `other_${idx}`;
@@ -1241,7 +1277,7 @@ async function loadMatchDetail(detailUrl, match) {
       });
     });
   } catch (err) {
-    modalBody.innerHTML = `<div class="loading" style="color:rgba(248,113,113,0.9);">Ошибка загрузки: ${err.message}</div>`;
+    modalBody.innerHTML = `<div class="loading" style="color:rgba(248,113,113,0.9);">Loading error: ${err.message}</div>`;
   }
 }
 

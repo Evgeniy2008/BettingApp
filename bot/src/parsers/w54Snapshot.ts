@@ -214,11 +214,38 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
   let $tables = $("table[class*='LinesGroup_group']");
   console.log(`[DEBUG] Found ${$tables.length} tables with LinesGroup_group`);
   
+  // Also check for other possible containers
+  const $allTables = $("table");
+  const $divGroups = $("div[class*='LinesGroup'], div[class*='Group']");
+  console.log(`[DEBUG] Total tables in HTML: ${$allTables.length}`);
+  console.log(`[DEBUG] Divs with Group classes: ${$divGroups.length}`);
+  
   // If no tables found with LinesGroup_group, try to find any tables
   if ($tables.length === 0) {
     console.log(`[DEBUG] No LinesGroup_group tables found, trying all tables...`);
-    $tables = $("table");
+    $tables = $allTables;
     console.log(`[DEBUG] Found ${$tables.length} total tables`);
+    
+    // Log ALL tables to see their structure
+    $tables.each((idx, table) => {
+      const $table = $(table);
+      const classes = $table.attr('class') || '';
+      const rows = $table.find('tr').length;
+      const hasDefaultLineCells = $table.find("td[class*='DefaultLine_cell']").length;
+      const hasMatchRows = $table.find("tr[class*='DefaultLine_line'], tr[class*='Line']").length;
+      const hasMatchIds = $table.find("[data-match-id]").length;
+      console.log(`[DEBUG] Table ${idx + 1}: classes="${classes.substring(0, 100)}", rows=${rows}, DefaultLine_cell=${hasDefaultLineCells}, match rows=${hasMatchRows}, match-ids=${hasMatchIds}`);
+    });
+  } else {
+    // Log found tables with LinesGroup_group
+    console.log(`[DEBUG] Found ${$tables.length} tables with LinesGroup_group`);
+    $tables.each((idx, table) => {
+      const $table = $(table);
+      const classes = $table.attr('class') || '';
+      const rows = $table.find('tr').length;
+      const hasDefaultLineCells = $table.find("td[class*='DefaultLine_cell']").length;
+      console.log(`[DEBUG] Table ${idx + 1}: rows=${rows}, DefaultLine_cell=${hasDefaultLineCells}`);
+    });
   }
   
   $tables.each((_tableIdx, tableEl) => {
@@ -232,14 +259,30 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
     const league = leagueParts.length > 0 ? leagueParts.join(". ") : undefined;
 
     // Find all match rows (not header) - try multiple selectors to catch all matches
-    let $matchRows = $table.find("tr[class*='DefaultLine_line']").filter((_i, row) => {
+    // NEW STRUCTURE: Look for rows with DefaultLine_cell first (more reliable)
+    let $matchRows = $table.find("tr").filter((_i, row) => {
       const $row = $(row);
-      return !$row.hasClass("LinesGroup_header");
+      // Skip header rows
+      if ($row.hasClass("LinesGroup_header")) return false;
+      // Check if row has DefaultLine_cell (new structure indicator)
+      const hasCells = $row.find("td[class*='DefaultLine_cell']").length > 0;
+      return hasCells;
     });
     
-    // If no matches found with DefaultLine_line, try to find all tr elements that contain match data
+    // If no matches found with DefaultLine_cell, try DefaultLine_line (old structure)
     if ($matchRows.length === 0) {
-      console.log(`[DEBUG] No DefaultLine_line rows found, trying alternative selectors...`);
+      $matchRows = $table.find("tr[class*='DefaultLine_line']").filter((_i, row) => {
+        const $row = $(row);
+        return !$row.hasClass("LinesGroup_header");
+      });
+    }
+    
+    // If still no matches, try to find all tr elements that contain match data
+    if ($matchRows.length === 0) {
+      console.log(`[DEBUG] No DefaultLine_cell/DefaultLine_line rows found in table ${_tableIdx + 1}, trying alternative selectors...`);
+      const allRows = $table.find("tr");
+      console.log(`[DEBUG] Total rows in table: ${allRows.length}`);
+      
       $matchRows = $table.find("tr").filter((_i, row) => {
         const $row = $(row);
         // Skip header rows
@@ -247,24 +290,76 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
         // Check if row has teams or match data
         const hasTeams = $row.find("div[class*='DefaultLine_teamsWrap'], div[class*='teamsWrap'], [class*='team']").length > 0;
         const hasOutcomes = $row.find("button[data-outcome-alias], button[data-odd], button[class*='outcome']").length > 0;
-        const hasCells = $row.find("td[class*='DefaultLine_cell']").length > 0;
-        return hasTeams || hasOutcomes || hasCells;
+        const hasMatchId = $row.find("button[data-match-id], [data-match-id]").length > 0;
+        // Also check for cells with multiple td elements (likely a match row)
+        const hasMultipleCells = $row.find("td").length >= 3;
+        return hasTeams || hasOutcomes || hasMatchId || hasMultipleCells;
       });
-      console.log(`[DEBUG] Found ${$matchRows.length} alternative match rows`);
+      console.log(`[DEBUG] Found ${$matchRows.length} alternative match rows in table ${_tableIdx + 1}`);
+      
+      // If still no rows, try even broader search - all rows with td
+      if ($matchRows.length === 0 && allRows.length > 1) {
+        console.log(`[DEBUG] Still no rows found, trying to parse all non-header rows with td...`);
+        $matchRows = allRows.filter((_i, row) => {
+          const $row = $(row);
+          return !$row.hasClass("LinesGroup_header") && $row.find("td").length >= 2;
+        });
+        console.log(`[DEBUG] Found ${$matchRows.length} rows after broad search`);
+      }
     }
     
-    console.log(`[DEBUG] Found ${$matchRows.length} match rows in table ${_tableIdx + 1}`);
+    console.log(`[DEBUG] Found ${$matchRows.length} match rows in table ${_tableIdx + 1} (league: ${league || 'unknown'})`);
+    
+    // Count LIVE vs non-LIVE in this table
+    let liveInTable = 0;
+    let nonLiveInTable = 0;
+    $matchRows.each((_rowIdx, rowEl) => {
+      const $row = $(rowEl);
+      const hasLiveClass = $row.hasClass("DefaultLine_highlighted");
+      const hasLiveLabel = $row.find("[class*='DefaultLine_liveLabel']").length > 0;
+      const hasScoreWrap = $row.find("[class*='DefaultLine_scoreWrap']").length > 0;
+      if (hasLiveClass || hasLiveLabel || hasScoreWrap) {
+        liveInTable++;
+      } else {
+        nonLiveInTable++;
+      }
+    });
+    console.log(`[DEBUG] Table ${_tableIdx + 1} breakdown: ${liveInTable} LIVE, ${nonLiveInTable} non-LIVE rows`);
 
     $matchRows.each((_rowIdx, rowEl) => {
       const $row = $(rowEl);
 
       // Check if this is a LIVE match - use reliable indicators only
+      // Be more strict: LIVE matches should have actual score or live time displayed
       const hasLiveClass = $row.hasClass("DefaultLine_highlighted");
-      const hasLiveLabel = $row.find("[class*='DefaultLine_liveLabel']").length > 0;
-      const hasScoreWrap = $row.find("[class*='DefaultLine_scoreWrap']").length > 0;
+      const hasLiveLabel = $row.find("[class*='DefaultLine_liveLabel'], [class*='liveLabel']").length > 0;
+      const $scoreWrap = $row.find("[class*='DefaultLine_scoreWrap'], [class*='scoreWrap']");
+      const hasScoreWrap = $scoreWrap.length > 0;
       
-      // Only mark as live if we have clear indicators (class, label, or score wrap)
-      const isLive = hasLiveClass || hasLiveLabel || hasScoreWrap;
+      // Check if score wrap actually contains score numbers (not just empty)
+      let hasActualScore = false;
+      if (hasScoreWrap) {
+        const scoreTexts = $scoreWrap.find("[class*='DefaultLine_score'], [class*='score']").toArray();
+        if (scoreTexts.length >= 2) {
+          const homeScoreText = textTrim($(scoreTexts[0]).text());
+          const awayScoreText = textTrim($(scoreTexts[1]).text());
+          const homeScore = parseInt(homeScoreText);
+          const awayScore = parseInt(awayScoreText);
+          // Score exists if both are valid numbers (even 0-0 is a valid score)
+          hasActualScore = !isNaN(homeScore) && !isNaN(awayScore) && homeScoreText !== '' && awayScoreText !== '';
+        }
+      }
+      
+      // Check for live time indicators (e.g., "45'", "2-й тайм", "Перерыв")
+      const matchInfoText = $row.find("[class*='DefaultLine_matchInfo'], [class*='matchInfo']").text();
+      const hasLiveTime = matchInfoText.match(/\d+'|тайм|половина|Перерыв/i);
+      
+      // Only mark as live if we have clear indicators:
+      // 1. Live class OR
+      // 2. Live label OR  
+      // 3. Score wrap with actual score numbers (not just empty elements) OR
+      // 4. Live time indicators in match info
+      const isLive = hasLiveClass || hasLiveLabel || (hasScoreWrap && hasActualScore) || !!hasLiveTime;
 
       // Extract teams - try multiple selectors
       let teams = $row
@@ -303,7 +398,7 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
         return;
       }
       
-      console.log(`[DEBUG] Parsing match: ${teams[0]} vs ${teams[1]}, isLive: ${isLive}`);
+      console.log(`[DEBUG] Parsing match: ${teams[0]} vs ${teams[1]}, isLive: ${isLive} (hasLiveClass: ${hasLiveClass}, hasLiveLabel: ${hasLiveLabel}, hasScoreWrap: ${hasScoreWrap}, hasActualScore: ${hasActualScore}, hasLiveTime: ${!!hasLiveTime})`);
 
       // Extract time and date (for non-LIVE matches)
       let time = textTrim($row.find(".auto_center_match_time").first().text());
@@ -457,8 +552,64 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
       });
     });
   });
-
+  
+  // If we found very few matches, try searching in div containers as well
+  // (maybe non-LIVE matches are in divs, not tables)
+  if (matches.length < 50) {
+    console.log(`[DEBUG] Found only ${matches.length} matches, trying to search in div containers...`);
+    const $divContainers = $("div[class*='LinesGroup'], div[class*='Group']");
+    console.log(`[DEBUG] Found ${$divContainers.length} div containers with Group classes`);
+    
+    // Try to find match rows in divs
+    $divContainers.each((_divIdx, divEl) => {
+      const $div = $(divEl);
+      const $divRows = $div.find("tr, div[class*='Line'], div[class*='line']");
+      
+      if ($divRows.length > 0) {
+        console.log(`[DEBUG] Div container ${_divIdx + 1}: found ${$divRows.length} potential match rows`);
+        // Process similar to table rows
+        $divRows.each((_rowIdx, rowEl) => {
+          const $row = $(rowEl);
+          
+          // Check if this looks like a match row
+          const hasCells = $row.find("td[class*='DefaultLine_cell']").length > 0;
+          const hasMatchId = $row.find("[data-match-id]").length > 0;
+          const hasTeams = $row.find("div[class*='team'], div[class*='Team']").length > 0;
+          
+          if (hasCells || hasMatchId || hasTeams) {
+            // This might be a match row - try to parse it
+            // (similar logic to table parsing, but simplified)
+            const matchId = $row.find("[data-match-id]").first().attr("data-match-id");
+            if (matchId) {
+              // Check if we already have this match
+              const existing = matches.find(m => m.matchId === matchId);
+              if (!existing) {
+                console.log(`[DEBUG] Found potential match in div container: matchId=${matchId}`);
+                // Could add parsing logic here if needed
+              }
+            }
+          }
+        });
+      }
+    });
+  }
+  
   console.log(`[DEBUG] Total matches found before deduplication: ${matches.length}`);
+  
+  // Log breakdown by LIVE status
+  const liveMatches = matches.filter(m => m.isLive).length;
+  const nonLiveMatches = matches.filter(m => !m.isLive).length;
+  console.log(`[DEBUG] Matches breakdown: ${liveMatches} LIVE, ${nonLiveMatches} non-LIVE`);
+  
+  // If we only found LIVE matches, warn about potential issue
+  if (nonLiveMatches === 0 && matches.length > 0) {
+    console.warn(`[DEBUG] ⚠️ WARNING: Only LIVE matches found (${liveMatches}). This might indicate:`);
+    console.warn(`[DEBUG]   1. All matches on page are actually LIVE`);
+    console.warn(`[DEBUG]   2. Non-LIVE matches are in different structure/containers`);
+    console.warn(`[DEBUG]   3. Parser is only finding LIVE section`);
+    console.warn(`[DEBUG] Total tables processed: ${$tables.length}`);
+    console.warn(`[DEBUG] Total rows processed: ${matches.length}`);
+  }
   
   // Log summary of what was found
   if (matches.length === 0) {
