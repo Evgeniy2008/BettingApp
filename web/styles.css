@@ -64,6 +64,14 @@ html {
   gap: 8px;
 }
 
+.header-profile-mobile {
+  display: none;
+}
+
+.match-actions-mobile {
+  display: none;
+}
+
 .logo {
   width: 38px;
   height: 38px;
@@ -1409,7 +1417,12 @@ html {
     box-sizing: border-box;
     /* Telegram Web App safe area */
     padding-top: max(4px, env(safe-area-inset-top, 4px));
-    padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+    padding-bottom: max(80px, calc(env(safe-area-inset-bottom, 0px) + 80px)); /* Space for bottom nav */
+  }
+
+  /* Hide top tabs on mobile */
+  .tabs {
+    display: none;
   }
 
   .matches-table {
@@ -1439,11 +1452,53 @@ html {
   .header-right {
     width: 100%;
     order: 3;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .header-profile-mobile {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  
+  .profile-balance-mobile {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f4f4f5;
+    white-space: nowrap;
+  }
+  
+  .profile-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #f4f4f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+  }
+  
+  .profile-icon-btn:active {
+    transform: scale(0.95);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  
+  .profile-icon-btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   .search-box {
-    width: 100%;
-    max-width: 100%;
+    flex: 1;
+    max-width: calc(100% - 120px);
     height: 36px;
   }
 
@@ -1743,10 +1798,37 @@ html {
     max-width: 100%;
     box-sizing: border-box;
     min-width: 0;
+    cursor: default;
   }
   
   .match-row-live {
     box-shadow: 0 2px 12px rgba(220, 38, 38, 0.2);
+  }
+  
+  .match-actions-mobile {
+    display: flex;
+    padding: 8px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    margin-top: 8px;
+  }
+  
+  .go-to-all-bets-btn {
+    width: 100%;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #f4f4f5;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+  }
+  
+  .go-to-all-bets-btn:active {
+    transform: scale(0.98);
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .match-info {
@@ -2296,4 +2378,405 @@ html {
   border-color: rgba(148, 163, 184, 0.7);
   color: #94a3b8;
   background: rgba(148, 163, 184, 0.1);
+}
+
+/* Bets Page Styles */
+.bets-filters {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bet-filter-btn {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid #262835;
+  background: #181923;
+  color: #d4d4d8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.bet-filter-btn:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.bet-filter-btn.bet-filter-active {
+  background: red;
+  border-color: red;
+  color: #fef2f2;
+}
+
+.bets-list {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bet-card {
+  background: #14151d;
+  border: 1px solid #262835;
+  border-radius: 14px;
+  padding: 16px;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.bet-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.bet-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.bet-card-id {
+  font-size: 11px;
+  color: rgba(232, 232, 234, 0.5);
+  font-family: monospace;
+}
+
+.bet-card-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.bet-card-status.status-pending {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.bet-card-status.status-active {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.bet-card-status.status-won {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.bet-card-status.status-lost {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.bet-card-status.status-cancelled {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.bet-card-match {
+  margin-bottom: 12px;
+}
+
+.bet-card-match-teams {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.bet-card-team {
+  font-weight: 600;
+  font-size: 14px;
+  color: #f4f4f5;
+}
+
+.bet-card-vs {
+  color: rgba(232, 232, 234, 0.5);
+  font-size: 12px;
+}
+
+.bet-card-league {
+  font-size: 11px;
+  color: rgba(232, 232, 234, 0.6);
+  margin-top: 4px;
+}
+
+.bet-card-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bet-card-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bet-card-detail-label {
+  font-size: 11px;
+  color: rgba(232, 232, 234, 0.6);
+}
+
+.bet-card-detail-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.bet-card-outcome {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.bet-card-outcome-label {
+  font-size: 12px;
+  color: rgba(232, 232, 234, 0.7);
+}
+
+.bet-card-outcome-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.bet-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+  color: rgba(232, 232, 234, 0.5);
+}
+
+.bet-card-amount {
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.bet-card-amount.amount-won {
+  color: #22c55e;
+}
+
+.bet-card-amount.amount-lost {
+  color: #ef4444;
+}
+
+.bets-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: rgba(232, 232, 234, 0.6);
+}
+
+.bets-empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.bets-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f4f4f5;
+  margin-bottom: 8px;
+}
+
+.bets-empty-text {
+  font-size: 14px;
+  color: rgba(232, 232, 234, 0.6);
+}
+
+/* Mobile styles for Bets page */
+@media (max-width: 768px) {
+  .bets-filters {
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 12px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .bets-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bet-filter-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .bet-card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .bet-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .bet-card-details {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .bet-card-match-teams {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .bet-card-vs {
+    display: none;
+  }
+
+  .bet-card-team {
+    font-size: 13px;
+  }
+
+  .bet-card-outcome {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .bets-empty {
+    padding: 40px 20px;
+  }
+
+  .bets-empty-icon {
+    font-size: 48px;
+  }
+}
+
+/* Bottom Navigation Menu (Mobile Only) */
+.bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    background: #181a20;
+    border-top: 1px solid #262835;
+    padding: 8px 0;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+    z-index: 1000;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+    justify-content: space-around;
+    align-items: center;
+  }
+
+  .bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: rgba(232, 232, 234, 0.6);
+    cursor: pointer;
+    padding: 8px 12px;
+    min-width: 60px;
+    position: relative;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .bottom-nav-item:active {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
+
+  .bottom-nav-item svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+    transition: all 0.2s ease;
+  }
+
+  .bottom-nav-item.active {
+    color: red;
+  }
+
+  .bottom-nav-item.active svg {
+    stroke: red;
+  }
+
+  .bottom-nav-label {
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    margin-top: 2px;
+  }
+
+  .bottom-nav-item-betslip {
+    position: relative;
+  }
+
+  .bottom-nav-badge {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    background: red;
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    border: 2px solid #181a20;
+    min-width: 18px;
+    padding: 0 2px;
+  }
+
+  .bottom-nav-badge:empty {
+    display: none;
+  }
+
+  /* Hide floating betslip button when bottom nav is visible */
+  .betslip-float-btn {
+    display: none !important;
+  }
 }

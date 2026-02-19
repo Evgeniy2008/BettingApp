@@ -112,6 +112,8 @@ async function initUser() {
     if (data.success && data.user) {
       currentUser = data.user;
       updateUserUI();
+      // Dispatch event for app.js to update profile balance
+      window.dispatchEvent(new CustomEvent('userUpdated'));
       loadWallets();
       loadWalletHistory();
     } else {
@@ -305,6 +307,9 @@ function updateUserUI() {
       ? `@${currentUser.telegram_username}` 
       : (currentUser.telegram_id ? `ID: ${currentUser.telegram_id}` : 'Guest');
   }
+  
+  // Dispatch event for app.js to update profile balance
+  window.dispatchEvent(new CustomEvent('userUpdated'));
 }
 
 async function loadWallets() {

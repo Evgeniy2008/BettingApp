@@ -291,7 +291,8 @@ const state = {
   stake: 0,
   currentPage: 1,
   matchesPerPage: 20,
-  searchQuery: ""
+  searchQuery: "",
+  betsFilter: "all" // Filter for bets page: all, pending, active, won, lost, cancelled
 };
 
 function formatOdd(n) {
@@ -465,6 +466,9 @@ function renderMatchRow(match) {
         ${renderOutcomeValue(foraValue)}
         ${renderOutcomeButton(match, "fora_two", fora2?.odd, "2", foraValue)}
       </div>
+      <div class="match-actions-mobile">
+        <button class="go-to-all-bets-btn" data-match-id="${match.id}">Go to all bets</button>
+      </div>
     </div>
   `;
 }
@@ -573,6 +577,9 @@ function openBetslipMobile() {
     // Убеждаемся, что betslip может получать клики и имеет яркий фон
     betslip.style.pointerEvents = 'all';
     betslip.style.background = '#16181f';
+    
+    // Update bottom nav active state
+    updateBottomNavActive();
   }
 }
 
@@ -589,6 +596,8 @@ function closeBetslipMobile() {
       overlay.style.display = 'none';
       document.body.style.overflow = '';
       if (closeBtn) closeBtn.style.display = 'none';
+      // Update bottom nav active state after animation
+      updateBottomNavActive();
     }, 300);
   }
 }
@@ -601,6 +610,8 @@ function toggleBetslipMobile() {
   } else {
     openBetslipMobile();
   }
+  // Update bottom nav active state
+  updateBottomNavActive();
 }
 
 function renderSlip() {
@@ -608,6 +619,8 @@ function renderSlip() {
   const slip = state.slip;
   const slipCount = document.getElementById("slip-count");
   const floatCount = document.getElementById("betslip-float-count");
+  const bottomNavBetslipCount = document.getElementById("bottom-nav-betslip-count");
+  
   slipCount.textContent = slip.length.toString();
   if (floatCount) {
     floatCount.textContent = slip.length.toString();
@@ -616,6 +629,16 @@ function renderSlip() {
     if (floatBtn && isMobile()) {
       floatBtn.style.display = 'flex';
       floatBtn.classList.remove('hidden');
+    }
+  }
+  
+  // Update bottom nav betslip count
+  if (bottomNavBetslipCount) {
+    bottomNavBetslipCount.textContent = slip.length.toString();
+    if (slip.length === 0) {
+      bottomNavBetslipCount.style.display = 'none';
+    } else {
+      bottomNavBetslipCount.style.display = 'flex';
     }
   }
 
@@ -785,23 +808,332 @@ function setupTabs() {
     tab.addEventListener("click", () => {
       const tabName = tab.getAttribute("data-tab");
       if (!tabName) return;
-      state.activeTab = tabName;
-      document
-        .querySelectorAll(".tab")
-        .forEach((t) => t.classList.remove("tab-active"));
-      tab.classList.add("tab-active");
+      switchTab(tabName);
+    });
+  });
+}
 
-      document
-        .querySelectorAll("main.layout, main.page")
-        .forEach((page) => {
-          const pageName = page.getAttribute("data-page");
-          if (!pageName) return;
-          if (pageName === tabName) {
-            page.classList.remove("page-hidden");
-          } else {
-            page.classList.add("page-hidden");
+function switchTab(tabName) {
+  if (!tabName) return;
+  state.activeTab = tabName;
+  
+  // Update top tabs
+  document
+    .querySelectorAll(".tab")
+    .forEach((t) => {
+      if (t.getAttribute("data-tab") === tabName) {
+        t.classList.add("tab-active");
+      } else {
+        t.classList.remove("tab-active");
+      }
+    });
+
+  // Update bottom nav
+  document
+    .querySelectorAll(".bottom-nav-item")
+    .forEach((item) => {
+      const navName = item.getAttribute("data-nav");
+      if (navName === tabName) {
+        item.classList.add("active");
+      } else {
+        item.classList.remove("active");
+      }
+    });
+
+  // Update pages
+  document
+    .querySelectorAll("main.layout, main.page")
+    .forEach((page) => {
+      const pageName = page.getAttribute("data-page");
+      if (!pageName) return;
+      if (pageName === tabName) {
+        page.classList.remove("page-hidden");
+      } else {
+        page.classList.add("page-hidden");
+      }
+    });
+  
+  // Render bets when switching to bets tab
+  if (tabName === "bets") {
+    renderBets();
+  }
+  
+  // Close betslip on mobile when switching tabs (except when opening betslip)
+  if (isMobile() && tabName !== 'betslip') {
+    closeBetslipMobile();
+  }
+}
+
+function setupBottomNav() {
+  const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
+  
+  bottomNavItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      const navName = item.getAttribute("data-nav");
+      if (!navName) return;
+      
+      if (navName === "search") {
+        // Focus on search input
+        const searchInput = document.getElementById("search-input");
+        if (searchInput) {
+          searchInput.focus();
+          // Also switch to sportsbook tab if not already there
+          if (state.activeTab !== "sportsbook") {
+            switchTab("sportsbook");
           }
-        });
+        }
+      } else if (navName === "betslip") {
+        // Toggle betslip on mobile
+        if (isMobile()) {
+          toggleBetslipMobile();
+          // Mark as active when betslip is open
+          const betslip = document.querySelector('.betslip');
+          if (betslip && betslip.classList.contains('betslip-open')) {
+            item.classList.add("active");
+          } else {
+            item.classList.remove("active");
+          }
+        } else {
+          // On desktop, just switch to sportsbook (betslip is always visible)
+          switchTab("sportsbook");
+        }
+      } else {
+        // Regular tab switch
+        switchTab(navName);
+      }
+    });
+  });
+  
+  // Update active state on load
+  updateBottomNavActive();
+}
+
+function updateBottomNavActive() {
+  const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
+  bottomNavItems.forEach((item) => {
+    const navName = item.getAttribute("data-nav");
+    if (navName === state.activeTab) {
+      item.classList.add("active");
+    } else {
+      item.classList.remove("active");
+    }
+    
+    // Special handling for betslip - check if it's open
+    if (navName === "betslip" && isMobile()) {
+      const betslip = document.querySelector('.betslip');
+      if (betslip && betslip.classList.contains('betslip-open')) {
+        item.classList.add("active");
+      }
+    }
+  });
+}
+
+// Test data for bets (will be replaced with API call later)
+const testBets = [
+  {
+    id: "BET-001",
+    status: "pending",
+    match: { home: "Manchester United", away: "Liverpool", league: "Premier League" },
+    outcome: { label: "1", odd: 2.5, type: "1x2" },
+    stake: 50.00,
+    potentialWin: 125.00,
+    createdAt: "2024-02-19 15:30:00"
+  },
+  {
+    id: "BET-002",
+    status: "active",
+    match: { home: "Barcelona", away: "Real Madrid", league: "La Liga" },
+    outcome: { label: "X", odd: 3.2, type: "1x2" },
+    stake: 30.00,
+    potentialWin: 96.00,
+    createdAt: "2024-02-19 18:00:00"
+  },
+  {
+    id: "BET-003",
+    status: "won",
+    match: { home: "Bayern Munich", away: "Dortmund", league: "Bundesliga" },
+    outcome: { label: "2", odd: 2.1, type: "1x2" },
+    stake: 100.00,
+    potentialWin: 210.00,
+    winAmount: 210.00,
+    createdAt: "2024-02-18 20:00:00",
+    settledAt: "2024-02-18 22:00:00"
+  },
+  {
+    id: "BET-004",
+    status: "lost",
+    match: { home: "PSG", away: "Marseille", league: "Ligue 1" },
+    outcome: { label: "1", odd: 1.8, type: "1x2" },
+    stake: 75.00,
+    potentialWin: 135.00,
+    createdAt: "2024-02-17 19:30:00",
+    settledAt: "2024-02-17 21:30:00"
+  },
+  {
+    id: "BET-005",
+    status: "won",
+    match: { home: "Chelsea", away: "Arsenal", league: "Premier League" },
+    outcome: { label: "Total Over", odd: 1.9, type: "total", value: "2.5" },
+    stake: 60.00,
+    potentialWin: 114.00,
+    winAmount: 114.00,
+    createdAt: "2024-02-16 16:00:00",
+    settledAt: "2024-02-16 18:00:00"
+  },
+  {
+    id: "BET-006",
+    status: "cancelled",
+    match: { home: "Juventus", away: "Inter Milan", league: "Serie A" },
+    outcome: { label: "1", odd: 2.3, type: "1x2" },
+    stake: 40.00,
+    potentialWin: 92.00,
+    createdAt: "2024-02-15 17:00:00",
+    cancelledAt: "2024-02-15 17:30:00"
+  },
+  {
+    id: "BET-007",
+    status: "active",
+    match: { home: "Atletico Madrid", away: "Sevilla", league: "La Liga" },
+    outcome: { label: "Handicap +1", odd: 1.7, type: "fora", value: "+1" },
+    stake: 45.00,
+    potentialWin: 76.50,
+    createdAt: "2024-02-19 19:00:00"
+  },
+  {
+    id: "BET-008",
+    status: "pending",
+    match: { home: "Napoli", away: "Roma", league: "Serie A" },
+    outcome: { label: "2", odd: 2.8, type: "1x2" },
+    stake: 35.00,
+    potentialWin: 98.00,
+    createdAt: "2024-02-19 20:15:00"
+  }
+];
+
+function formatBetOutcomeLabel(outcome) {
+  if (outcome.type === "1x2") {
+    return outcome.label;
+  } else if (outcome.type === "total") {
+    return `Total ${outcome.label === "Total Over" ? "Over" : "Under"} ${outcome.value || ""}`;
+  } else if (outcome.type === "fora") {
+    return `Handicap ${outcome.value || ""}`;
+  }
+  return outcome.label || "Unknown";
+}
+
+function formatDate(dateString) {
+  if (!dateString) return "N/A";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return dateString;
+  
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
+}
+
+function renderBets() {
+  const betsList = document.getElementById("bets-list");
+  const betsEmpty = document.getElementById("bets-empty");
+  
+  if (!betsList) return;
+  
+  // Filter bets by status
+  let filteredBets = testBets;
+  if (state.betsFilter !== "all") {
+    filteredBets = testBets.filter(bet => bet.status === state.betsFilter);
+  }
+  
+  // Sort by date (newest first)
+  filteredBets.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  
+  if (filteredBets.length === 0) {
+    betsList.style.display = "none";
+    if (betsEmpty) betsEmpty.style.display = "block";
+    return;
+  }
+  
+  betsList.style.display = "flex";
+  if (betsEmpty) betsEmpty.style.display = "none";
+  
+  betsList.innerHTML = filteredBets.map(bet => {
+    const statusClass = `status-${bet.status}`;
+    const outcomeLabel = formatBetOutcomeLabel(bet.outcome);
+    
+    let amountClass = "";
+    let amountText = `$${bet.stake.toFixed(2)}`;
+    if (bet.status === "won" && bet.winAmount) {
+      amountClass = "amount-won";
+      amountText = `+$${bet.winAmount.toFixed(2)}`;
+    } else if (bet.status === "lost") {
+      amountClass = "amount-lost";
+      amountText = `-$${bet.stake.toFixed(2)}`;
+    } else if (bet.status === "cancelled") {
+      amountText = `$${bet.stake.toFixed(2)} (refunded)`;
+    }
+    
+    return `
+      <div class="bet-card">
+        <div class="bet-card-header">
+          <div class="bet-card-id">${bet.id}</div>
+          <div class="bet-card-status ${statusClass}">${bet.status}</div>
+        </div>
+        <div class="bet-card-match">
+          <div class="bet-card-match-teams">
+            <span class="bet-card-team">${bet.match.home}</span>
+            <span class="bet-card-vs">vs</span>
+            <span class="bet-card-team">${bet.match.away}</span>
+          </div>
+          <div class="bet-card-league">${bet.match.league}</div>
+        </div>
+        <div class="bet-card-outcome">
+          <span class="bet-card-outcome-label">Bet:</span>
+          <span class="bet-card-outcome-value">${outcomeLabel} @ ${bet.outcome.odd.toFixed(2)}</span>
+        </div>
+        <div class="bet-card-details">
+          <div class="bet-card-detail-item">
+            <div class="bet-card-detail-label">Stake</div>
+            <div class="bet-card-detail-value">$${bet.stake.toFixed(2)}</div>
+          </div>
+          <div class="bet-card-detail-item">
+            <div class="bet-card-detail-label">${bet.status === "won" ? "Won" : bet.status === "lost" ? "Lost" : "Potential Win"}</div>
+            <div class="bet-card-detail-value ${bet.status === "won" ? "amount-won" : bet.status === "lost" ? "amount-lost" : ""}">
+              ${bet.status === "won" && bet.winAmount ? `$${bet.winAmount.toFixed(2)}` : bet.status === "lost" ? "$0.00" : `$${bet.potentialWin.toFixed(2)}`}
+            </div>
+          </div>
+        </div>
+        <div class="bet-card-footer">
+          <span>${formatDate(bet.createdAt)}</span>
+          <span class="bet-card-amount ${amountClass}">${amountText}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function setupBetsFilters() {
+  const filterButtons = document.querySelectorAll(".bet-filter-btn");
+  
+  filterButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const status = btn.getAttribute("data-status");
+      if (!status) return;
+      
+      // Update active filter
+      filterButtons.forEach(b => b.classList.remove("bet-filter-active"));
+      btn.classList.add("bet-filter-active");
+      
+      // Update state and re-render
+      state.betsFilter = status;
+      renderBets();
     });
   });
 }
@@ -811,6 +1143,11 @@ function init() {
   renderMatches();
   renderSlip();
   setupTabs();
+  setupBottomNav();
+  setupBetsFilters();
+  renderBets();
+  // Set initial active state for bottom nav
+  updateBottomNavActive();
 
   document
     .getElementById("leagues-list")
@@ -831,7 +1168,12 @@ function init() {
       }
       
       // Otherwise, check if we should open match detail modal
-      if (e.target.closest(".outcome-btn, .outcome-cell, .match-odds-row")) {
+      if (e.target.closest(".outcome-btn, .outcome-cell, .match-odds-row, .match-actions-mobile, .go-to-all-bets-btn")) {
+        return;
+      }
+      
+      // On mobile, don't open modal on match row click - only via button
+      if (isMobile()) {
         return;
       }
       
@@ -1377,6 +1719,59 @@ window.addEventListener("DOMContentLoaded", () => {
       e.stopPropagation();
     });
   }
+  
+  // Handle "Go to all bets" button clicks on mobile
+  document.addEventListener('click', (e) => {
+    const goToBetsBtn = e.target.closest('.go-to-all-bets-btn');
+    if (!goToBetsBtn) return;
+    
+    const matchId = goToBetsBtn.getAttribute('data-match-id');
+    const match = matches.find((m) => m.id === matchId);
+    if (!match || !match.detailUrl) return;
+    
+    loadMatchDetail(match.detailUrl, match);
+  });
+  
+  // Handle profile icon click
+  const profileIconBtn = document.getElementById('profile-icon-btn');
+  if (profileIconBtn) {
+    profileIconBtn.addEventListener('click', () => {
+      const profileTab = document.querySelector('[data-tab="profile"]');
+      if (profileTab) {
+        profileTab.click();
+      }
+    });
+  }
+  
+  // Update profile balance in header
+  function updateProfileBalance() {
+    if (typeof currentUser !== 'undefined' && currentUser) {
+      const balanceEl = document.getElementById('profile-balance-mobile');
+      if (balanceEl && currentUser.balance !== undefined) {
+        balanceEl.textContent = `$${currentUser.balance.toFixed(2)}`;
+      }
+    }
+  }
+  
+  // Expose updateProfileBalance globally so wallet.js can call it
+  window.updateProfileBalance = updateProfileBalance;
+  
+  // Call update when user data is loaded (if wallet.js is loaded)
+  if (typeof window.updateUserUI === 'function') {
+    const originalUpdateUserUI = window.updateUserUI;
+    window.updateUserUI = function() {
+      originalUpdateUserUI();
+      updateProfileBalance();
+    };
+  }
+  
+  // Initial update after a delay to allow wallet.js to load
+  setTimeout(updateProfileBalance, 500);
+  
+  // Also listen for custom event from wallet.js
+  window.addEventListener('userUpdated', () => {
+    updateProfileBalance();
+  });
   
   // Show float button on mobile on load
   if (isMobile()) {

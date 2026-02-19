@@ -27,11 +27,21 @@
           <div class="search-box">
             <input id="search-input" type="text" placeholder="Search league..." />
           </div>
+          <div class="header-profile-mobile" id="header-profile-mobile" style="display: none;">
+            <div class="profile-balance-mobile" id="profile-balance-mobile">$0.00</div>
+            <button class="profile-icon-btn" id="profile-icon-btn" title="Profile">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M20.59 22C20.59 18.13 16.74 15 12 15C7.26 15 3.41 18.13 3.41 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
       <nav class="tabs">
         <button class="tab tab-active" data-tab="sportsbook">Sportsbook</button>
+        <button class="tab" data-tab="bets">Bets</button>
         <button class="tab" data-tab="wallet">Wallet</button>
         <button class="tab" data-tab="profile">Profile</button>
       </nav>
@@ -168,6 +178,35 @@
         </section>
       </main>
 
+      <main class="page page-hidden" data-page="bets">
+        <section class="card">
+          <h2>My Bets</h2>
+          <p>View and track all your betting history.</p>
+          
+          <!-- Status Filters -->
+          <div class="bets-filters">
+            <button class="bet-filter-btn bet-filter-active" data-status="all">All</button>
+            <button class="bet-filter-btn" data-status="pending">Pending</button>
+            <button class="bet-filter-btn" data-status="active">Active</button>
+            <button class="bet-filter-btn" data-status="won">Won</button>
+            <button class="bet-filter-btn" data-status="lost">Lost</button>
+            <button class="bet-filter-btn" data-status="cancelled">Cancelled</button>
+          </div>
+
+          <!-- Bets List -->
+          <div id="bets-list" class="bets-list">
+            <!-- Bets will be rendered here -->
+          </div>
+
+          <!-- Empty State -->
+          <div id="bets-empty" class="bets-empty" style="display: none;">
+            <div class="bets-empty-icon">📋</div>
+            <div class="bets-empty-title">No bets found</div>
+            <div class="bets-empty-text">You haven't placed any bets yet</div>
+          </div>
+        </section>
+      </main>
+
       <main class="page page-hidden" data-page="profile">
         <section class="card">
           <h2>Profile</h2>
@@ -208,6 +247,50 @@
 
     <!-- BetSlip Overlay (Mobile Only) -->
     <div id="betslip-overlay" class="betslip-overlay" style="display: none;"></div>
+
+    <!-- Bottom Navigation Menu (Mobile Only) -->
+    <nav class="bottom-nav" id="bottom-nav">
+      <button class="bottom-nav-item" data-nav="sportsbook" title="Sportsbook">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 22V12H15V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="bottom-nav-label">Home</span>
+      </button>
+      <button class="bottom-nav-item" data-nav="bets" title="Bets">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 5H7C5.89543 5 5 5.89543 5 7V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V7C19 5.89543 18.1046 5 17 5H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V5C15 6.10457 14.1046 7 13 7H11C9.89543 7 9 6.10457 9 5V5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 12H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 16H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="bottom-nav-label">Bets</span>
+      </button>
+      <button class="bottom-nav-item bottom-nav-item-betslip" data-nav="betslip" title="Bet Slip">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 5H7C5.89543 5 5 5.89543 5 7V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V7C19 5.89543 18.1046 5 17 5H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 5C9 3.89543 9.89543 3 11 3H13C14.1046 3 15 3.89543 15 5V5C15 6.10457 14.1046 7 13 7H11C9.89543 7 9 6.10457 9 5V5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 12H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 16H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="bottom-nav-badge" id="bottom-nav-betslip-count">0</span>
+        <span class="bottom-nav-label">Slip</span>
+      </button>
+      <button class="bottom-nav-item" data-nav="wallet" title="Wallet">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M21 4H3C1.89543 4 1 4.89543 1 6V18C1 19.1046 1.89543 20 3 20H21C22.1046 20 23 19.1046 23 18V6C23 4.89543 22.1046 4 21 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M1 10H23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="bottom-nav-label">Wallet</span>
+      </button>
+      <button class="bottom-nav-item" data-nav="profile" title="Profile">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M20.59 22C20.59 18.13 16.74 15 12 15C7.26 15 3.41 18.13 3.41 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="bottom-nav-label">Profile</span>
+      </button>
+    </nav>
 
     <!-- Deposit Modal -->
     <div id="deposit-modal" class="modal" style="display: none;">
