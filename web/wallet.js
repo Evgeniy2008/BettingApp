@@ -201,14 +201,16 @@ function renderWalletDeposits(deposits) {
   
   el.innerHTML = deposits.slice(0, 5).map(item => {
     const status = statusMap[item.status] || { text: item.status, class: '' };
+    const hash = item.transaction_hash || '';
+    const hashDisplay = hash.length > 15 ? hash.substring(0, 15) + '...' : hash;
     return `
-      <div style="padding: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: center;">
-        <div style="flex: 1;">
-          <div style="font-size: 12px; font-weight: 600;">${item.amount.toFixed(2)} ${item.currency || 'USDT'}</div>
-          <div class="mono" style="font-size: 10px; color: rgba(232, 232, 234, 0.6); margin-top: 2px;">${item.transaction_hash.substring(0, 20)}...</div>
-          <div style="font-size: 10px; color: rgba(232, 232, 234, 0.5); margin-top: 2px;">${new Date(item.created_at).toLocaleDateString('ru-RU')}</div>
+      <div style="padding: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">$${item.amount.toFixed(2)} ${item.currency || 'USDT'}</div>
+          <div class="mono" style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-top: 4px; word-break: break-all;">${hashDisplay}</div>
+          <div style="font-size: 11px; color: rgba(232, 232, 234, 0.5); margin-top: 4px;">${new Date(item.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
         </div>
-        <span class="${status.class}" style="font-size: 10px; padding: 4px 8px;">${status.text}</span>
+        <span class="${status.class}" style="font-size: 11px; padding: 4px 8px; flex-shrink: 0; white-space: nowrap;">${status.text}</span>
       </div>
     `;
   }).join('');
@@ -231,14 +233,16 @@ function renderWalletWithdrawals(withdrawals) {
   
   el.innerHTML = withdrawals.slice(0, 5).map(item => {
     const status = statusMap[item.status] || { text: item.status, class: '' };
+    const wallet = item.wallet_address || '';
+    const walletDisplay = wallet.length > 15 ? wallet.substring(0, 15) + '...' : wallet;
     return `
-      <div style="padding: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: center;">
-        <div style="flex: 1;">
-          <div style="font-size: 12px; font-weight: 600;">${item.amount.toFixed(2)} ${item.currency || 'USDT'}</div>
-          <div class="mono" style="font-size: 10px; color: rgba(232, 232, 234, 0.6); margin-top: 2px;">${item.wallet_address.substring(0, 20)}...</div>
-          <div style="font-size: 10px; color: rgba(232, 232, 234, 0.5); margin-top: 2px;">${new Date(item.created_at).toLocaleDateString('ru-RU')}</div>
+      <div style="padding: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">$${item.amount.toFixed(2)} ${item.currency || 'USDT'}</div>
+          <div class="mono" style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-top: 4px; word-break: break-all;">${walletDisplay}</div>
+          <div style="font-size: 11px; color: rgba(232, 232, 234, 0.5); margin-top: 4px;">${new Date(item.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
         </div>
-        <span class="${status.class}" style="font-size: 10px; padding: 4px 8px;">${status.text}</span>
+        <span class="${status.class}" style="font-size: 11px; padding: 4px 8px; flex-shrink: 0; white-space: nowrap;">${status.text}</span>
       </div>
     `;
   }).join('');
