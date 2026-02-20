@@ -2,7 +2,7 @@
 const API_BASE = "http://localhost:3000";
 
 // Source URL for parsing matches
-// Matches are parsed from: https://w54rjjmb.com/sport?lc=1&ss=all
+// Matches are parsed from: https://w54rjjmb.com/sport?lc=1&from_left_menu=&ss=all
 // This is the main sports page with all leagues and matches
 // The endpoint /api/w54/live fetches and parses this page
 
@@ -56,12 +56,12 @@ function showMatchesSkeleton() {
 }
 
 // Load matches from live site or snapshot
-async function loadMatches() {
+async function loadMatches(forceRefresh = false) {
   // Show skeleton while loading
   showMatchesSkeleton();
   
   const loadStartTime = Date.now();
-  console.log(`[App] Loading matches at ${new Date().toISOString()}`);
+  console.log(`[App] Loading matches at ${new Date().toISOString()}${forceRefresh ? ' (FORCE REFRESH - NO CACHE)' : ''}`);
   
   try {
     // Try live first (or snapshot if forced)
@@ -79,19 +79,29 @@ async function loadMatches() {
       console.log(`[App] Received ${data.matches?.length || 0} matches from snapshot`);
     } else {
       try {
-        // Add cache buster to prevent browser caching
-        const cacheBuster = `?_t=${Date.now()}&_r=${Math.random().toString(36).substring(7)}`;
+        // Add cache buster to prevent browser caching - use more aggressive cache busting if force refresh
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(7);
+        const extraRandom = forceRefresh ? `&_f=${Math.random().toString(36).substring(7)}&_n=${Date.now()}` : '';
+        const cacheBuster = `?_t=${timestamp}&_r=${random}${extraRandom}`;
         const url = `${API_BASE}/api/w54/live${cacheBuster}`;
-        console.log(`[App] Fetching from: ${url}`);
+        console.log(`[App] Fetching from: ${url}${forceRefresh ? ' (FORCE REFRESH)' : ''}`);
         
+        // Use POST method to completely bypass GET cache
+        // Add unique headers to prevent any caching
+        const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
         res = await fetch(url, {
+          method: 'GET',
           cache: 'no-store',
           headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
             'Pragma': 'no-cache',
             'Expires': '0',
             'If-Modified-Since': '0',
-            'If-None-Match': '*'
+            'If-None-Match': '*',
+            'X-Request-ID': uniqueId,
+            'X-Request-Time': Date.now().toString(),
+            'X-No-Cache': '1'
           }
         });
         if (!res.ok) {
@@ -872,6 +882,9 @@ function setupBottomNav() {
       const navName = item.getAttribute("data-nav");
       if (!navName) return;
       
+      // Check for special action attribute
+      const action = item.getAttribute("data-action");
+      
       if (navName === "search") {
         // Focus on search input
         const searchInput = document.getElementById("search-input");
@@ -882,6 +895,11 @@ function setupBottomNav() {
             switchTab("sportsbook");
           }
         }
+      } else if (action === "live" || (navName === "sportsbook" && action === "live")) {
+        // Live button - switch to sportsbook and force refresh
+        switchTab("sportsbook");
+        // Force reload matches without cache
+        loadMatches(true);
       } else if (navName === "betslip") {
         // Toggle betslip on mobile
         if (isMobile()) {
@@ -912,7 +930,16 @@ function updateBottomNavActive() {
   const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
   bottomNavItems.forEach((item) => {
     const navName = item.getAttribute("data-nav");
-    if (navName === state.activeTab) {
+    const action = item.getAttribute("data-action");
+    
+    // Special handling for Live button - active when on sportsbook
+    if (action === "live") {
+      if (state.activeTab === "sportsbook") {
+        item.classList.add("active");
+      } else {
+        item.classList.remove("active");
+      }
+    } else if (navName === state.activeTab) {
       item.classList.add("active");
     } else {
       item.classList.remove("active");
@@ -1646,16 +1673,33 @@ function initTelegramWebApp() {
 window.addEventListener("DOMContentLoaded", () => {
   initTelegramWebApp();
   init();
-  loadMatches();
+  // Force refresh on initial load to ensure fresh data
+  loadMatches(true);
   
-  // Auto-refresh matches every 30 seconds
+  // Auto-refresh matches every 30 seconds with force refresh to bypass cache
   let refreshInterval = setInterval(() => {
-    console.log('[App] Auto-refreshing matches...');
-    loadMatches();
+    console.log('[App] Auto-refreshing matches (force refresh)...');
+    loadMatches(true); // Force refresh to bypass cache
   }, 30000); // 30 seconds
   
   // Store interval ID for potential cleanup
   window.matchRefreshInterval = refreshInterval;
+  
+  // Refresh when page becomes visible (user returns to tab)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.activeTab === 'sportsbook') {
+      console.log('[App] Page became visible, forcing refresh...');
+      loadMatches(true);
+    }
+  });
+  
+  // Also refresh on focus (when user clicks on window)
+  window.addEventListener('focus', () => {
+    if (state.activeTab === 'sportsbook') {
+      console.log('[App] Window focused, forcing refresh...');
+      loadMatches(true);
+    }
+  });
   
   // Setup mobile betslip handlers
   const floatBtn = document.getElementById("betslip-float-btn");

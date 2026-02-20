@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer";
 
@@ -66,16 +68,21 @@ export async function parseW54SnapshotHtmlFromUrl(
   console.log(`[Parser] Timestamp: ${new Date(timestamp).toISOString()}`);
   const fetchStart = Date.now();
   
+  // Add unique request ID to completely bypass any cache
+  const requestId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
   const res = await fetch(urlWithCacheBuster, {
     method: 'GET',
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+      "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0, private",
       "Pragma": "no-cache",
       "Expires": "0",
       "If-Modified-Since": "0",
       "If-None-Match": "*",
+      "X-Request-ID": requestId,
+      "X-Request-Time": Date.now().toString(),
+      "X-No-Cache": "1",
       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
       "Accept-Encoding": "gzip, deflate, br",
@@ -114,72 +121,247 @@ export async function parseW54SnapshotHtmlFromUrl(
 export async function parseW54SnapshotHtmlFromUrlWithPuppeteer(
   url: string
 ): Promise<W54SnapshotResult> {
-  // Add timestamp and random to prevent caching
+  // Add multiple cache-busting parameters to prevent caching
   const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(7);
-  const urlWithCacheBuster = url.includes('?') 
-    ? `${url}&_t=${timestamp}&_r=${random}`
-    : `${url}?_t=${timestamp}&_r=${random}`;
+  const random1 = Math.random().toString(36).substring(7);
+  const random2 = Math.random().toString(36).substring(7);
+  const random3 = Math.random().toString(36).substring(7);
+  const separator = url.includes('?') ? '&' : '?';
+  const urlWithCacheBuster = `${url}${separator}_t=${timestamp}&_r=${random1}&_n=${random2}&_c=${random3}&_v=${Date.now()}`;
   
   console.log(`[Parser] Fetching matches with Puppeteer from URL: ${urlWithCacheBuster}`);
   console.log(`[Parser] Timestamp: ${new Date(timestamp).toISOString()}`);
   
   let browser;
+  let context;
+  let uniqueUserDataDir: string | undefined;
   try {
+    // Launch browser with aggressive cache-disabling flags
+    // Use userDataDir with unique temp directory to prevent any cache persistence
+    const tempDir = os.tmpdir();
+    uniqueUserDataDir = path.join(tempDir, `puppeteer-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+    
     browser = await puppeteer.launch({
       headless: true,
+      userDataDir: uniqueUserDataDir, // Unique temp directory for each request
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-cache',
+        '--disable-application-cache',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-domain-reliability',
+        '--disable-extensions',
+        '--disable-features=TranslateUI',
+        '--disable-hang-monitor',
+        '--disable-ipc-flooding-protection',
+        '--disable-notifications',
+        '--disable-offer-store-unmasked-wallet-cards',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-renderer-backgrounding',
+        '--disable-sync',
+        '--disable-translate',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-first-run',
+        '--safebrowsing-disable-auto-update',
+        '--enable-automation',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        '--aggressive-cache-discard',
+        '--disable-background-downloads',
+        '--disable-plugins-discovery',
+        '--disable-preconnect',
+        '--disable-remote-fonts',
+        '--disk-cache-size=0',
+        '--media-cache-size=0',
+        '--v8-cache-options=off'
       ]
     });
     
-    const page = await browser.newPage();
+    // Use incognito context for complete isolation - NO cache sharing
+    context = await browser.createIncognitoBrowserContext();
+    const page = await context.newPage();
+    
+    // Use unique User-Agent for each request
+    const userAgentVersion = Math.floor(Math.random() * 50) + 120;
     await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${userAgentVersion}.0.0.0 Safari/537.36`
     );
     
-    // Disable all caching
+    // Disable all caching completely
     await page.setCacheEnabled(false);
+    
+    // Add unique request ID with more randomness
+    const requestId = `${Date.now()}-${Math.random().toString(36).substring(7)}-${Math.random().toString(36).substring(7)}`;
+    const requestTime = Date.now().toString();
+    
+    // Enable CDP session for cache control
+    const client = await page.target().createCDPSession();
+    
+    // Aggressively disable all caching
+    await client.send('Network.setCacheDisabled', { cacheDisabled: true });
+    await client.send('Network.enable');
+    await client.send('Network.clearBrowserCache');
+    await client.send('Network.clearBrowserCookies');
     
     // Set extra headers to prevent caching
     await page.setExtraHTTPHeaders({
-      'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+      'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private, no-transform',
       'Pragma': 'no-cache',
       'Expires': '0',
       'If-Modified-Since': '0',
-      'If-None-Match': '*'
+      'If-None-Match': '*',
+      'X-Request-ID': requestId,
+      'X-Request-Time': requestTime,
+      'X-No-Cache': '1',
+      'X-Cache-Control': 'no-cache',
+      'X-Pragma': 'no-cache'
     });
     
-    // Clear browser cache before navigation
-    const client = await page.target().createCDPSession();
-    await client.send('Network.clearBrowserCache');
-    await client.send('Network.setCacheDisabled', { cacheDisabled: true });
+    // Intercept and modify ALL requests to add aggressive cache-busting
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const headers = request.headers();
+      
+      // Add cache-busting to all headers
+      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0, private, no-transform';
+      headers['Pragma'] = 'no-cache';
+      headers['Expires'] = '0';
+      headers['If-Modified-Since'] = '0';
+      headers['If-None-Match'] = '*';
+      headers['X-Request-ID'] = requestId;
+      headers['X-No-Cache'] = '1';
+      headers['X-Cache-Control'] = 'no-cache';
+      
+      // Modify URL to add cache-busting if it's the main request
+      let url = request.url();
+      if (!url.includes('_t=') && !url.includes('_r=')) {
+        const separator = url.includes('?') ? '&' : '?';
+        url = `${url}${separator}_t=${Date.now()}&_r=${Math.random().toString(36).substring(7)}&_n=${Math.random().toString(36).substring(7)}`;
+      }
+      
+      request.continue({ headers, url });
+    });
     
     console.log(`[Parser] Navigating to: ${urlWithCacheBuster}`);
-    await page.goto(urlWithCacheBuster, {
-      waitUntil: 'networkidle2',
-      timeout: 30000
+    
+    // Clear all storage before navigation
+    await page.evaluate(() => {
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+        // Clear IndexedDB
+        if ('indexedDB' in window) {
+          indexedDB.databases().then(databases => {
+            databases.forEach(db => {
+              if (db.name) {
+                indexedDB.deleteDatabase(db.name);
+              }
+            });
+          });
+        }
+      } catch (e) {
+        console.warn('Storage clear error:', e);
+      }
     });
     
-    // Wait for matches to load
+    // Navigate with no cache
+    console.log(`[Parser] First navigation to: ${urlWithCacheBuster}`);
+    await page.goto(urlWithCacheBuster, {
+      waitUntil: 'networkidle2',
+      timeout: 60000, // Increased timeout to 60 seconds
+      cache: false // Additional cache prevention
+    });
+    
+    // Wait 5 seconds after first navigation to ensure page is fully loaded
+    console.log(`[Parser] Waiting 5 seconds after first navigation for page to fully load...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Clear cache after first navigation
+    await client.send('Network.clearBrowserCache');
+    await client.send('Network.clearBrowserCookies');
+    
+    // Clear storage again after navigation
+    await page.evaluate(() => {
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (e) {}
+    });
+    
+    // Force reload to bypass any cached content
+    console.log(`[Parser] Force reloading page to bypass cache...`);
+    await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+    
+    // Wait 5 seconds after first reload
+    console.log(`[Parser] Waiting 5 seconds after first reload for page to fully load...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Clear cache again after reload
+    await client.send('Network.clearBrowserCache');
+    await client.send('Network.clearBrowserCookies');
+    
+    // Second reload for extra safety
+    console.log(`[Parser] Second reload for fresh data...`);
+    await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+    
+    // Wait 5 seconds after second reload
+    console.log(`[Parser] Waiting 5 seconds after second reload for page to fully load...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    // Clear cache one more time
+    await client.send('Network.clearBrowserCache');
+    
+    // Wait for matches to load with increased timeout
     try {
-      await page.waitForSelector('table[class*="LinesGroup_group"], tr[class*="DefaultLine_line"]', { timeout: 10000 });
+      await page.waitForSelector('table[class*="LinesGroup_group"], tr[class*="DefaultLine_line"]', { timeout: 20000 });
       console.log(`[Parser] Match selectors found`);
     } catch {
       console.warn(`[Parser] Match selectors not found, continuing anyway...`);
     }
     
-    // Additional wait for React to render
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Additional wait for React to render and ensure fresh data (5 seconds)
+    console.log(`[Parser] Final wait 5 seconds for React to fully render content...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
     
-    const html = await page.content();
+    // Force evaluate to get fresh content - get HTML directly from DOM
+    const html = await page.evaluate(() => {
+      // Clear any cached data in memory
+      if (window.location) {
+        window.location.reload = window.location.reload;
+      }
+      return document.documentElement.outerHTML;
+    });
     console.log(`[Parser] Got ${html.length} bytes of HTML from Puppeteer`);
     
+    // Log a sample of HTML to verify it's fresh
+    const htmlSample = html.substring(0, 500).replace(/\s+/g, ' ');
+    console.log(`[Parser] HTML sample: ${htmlSample}...`);
+    
+    // Close context and browser to ensure no cache persists
+    await context.close();
     await browser.close();
+    
+    // Clean up temp directory
+    try {
+      if (uniqueUserDataDir && fsSync.existsSync(uniqueUserDataDir)) {
+        fsSync.rmSync(uniqueUserDataDir, { recursive: true, force: true });
+        console.log(`[Parser] Cleaned up temp directory: ${uniqueUserDataDir}`);
+      }
+    } catch (cleanupErr) {
+      console.warn(`[Parser] Could not clean up temp directory: ${cleanupErr}`);
+    }
     
     const result = parseW54SnapshotHtml(html, url);
     console.log(`[Parser] Parsed ${result.matches.length} matches using Puppeteer`);
@@ -191,11 +373,23 @@ export async function parseW54SnapshotHtmlFromUrlWithPuppeteer(
     
     return result;
   } catch (e: any) {
+    // Ensure cleanup even on error
+    if (context) {
+      try {
+        await context.close();
+      } catch {}
+    }
     if (browser) {
       try {
         await browser.close();
       } catch {}
     }
+    // Clean up temp directory on error
+    try {
+      if (uniqueUserDataDir && fsSync.existsSync(uniqueUserDataDir)) {
+        fsSync.rmSync(uniqueUserDataDir, { recursive: true, force: true });
+      }
+    } catch {}
     throw e;
   }
 }
@@ -648,6 +842,200 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
       matchCount: unique.length
     }
   };
+}
+
+/**
+ * Updates ParseInfoNew.html with the MainLayout element from the live page.
+ * Fetches the page using Puppeteer, extracts the element, and saves it to the file.
+ */
+export async function updateParseInfoNewFromLive(): Promise<string> {
+  const url = "https://w54rjjmb.com/sport?lc=1&ss=all";
+  const targetClasses = "MainLayout_root__rqxHz MainLayout_withLeftSide__OMWDb MainLayout_withRightSide__Hpdej";
+  
+  console.log(`[Update] Fetching MainLayout element from ${url}`);
+  
+  let browser;
+  let uniqueUserDataDir: string | undefined;
+  
+  try {
+    // Launch browser with unique temp directory (same approach as working function)
+    const tempDir = os.tmpdir();
+    uniqueUserDataDir = path.join(tempDir, `puppeteer-update-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+    
+    browser = await puppeteer.launch({
+      headless: true,
+      userDataDir: uniqueUserDataDir,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-cache',
+        '--disable-application-cache',
+      ]
+    });
+    
+    // Use newPage directly instead of incognito context
+    const page = await browser.newPage();
+    
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
+    
+    await page.setCacheEnabled(false);
+    
+    // Navigate to the page
+    console.log(`[Update] Navigating to ${url}`);
+    await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: 60000
+    });
+    
+    // Wait for the MainLayout element to appear
+    console.log(`[Update] Waiting for MainLayout element...`);
+    try {
+      // Wait for element with at least the root class
+      await page.waitForSelector('.MainLayout_root__rqxHz', { timeout: 30000 });
+    } catch (err) {
+      console.warn(`[Update] Element not found with waitForSelector, continuing...`);
+    }
+    
+    // Wait a bit more for React to fully render
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Extract the MainLayout element's HTML
+    // Try multiple selector strategies
+    const elementHtml = await page.evaluate((classes) => {
+      const classList = classes.split(' ').filter(c => c.trim());
+      
+      // Strategy 1: Try to find element with all classes using querySelector
+      // Build selector like: .MainLayout_root__rqxHz.MainLayout_withLeftSide__OMWDb.MainLayout_withRightSide__Hpdej
+      const selector = classList.map(cls => `.${cls}`).join('');
+      let element = document.querySelector(selector);
+      
+      if (element) {
+        return element.outerHTML;
+      }
+      
+      // Strategy 2: Find element that has all classes by checking each element
+      // Start with elements that have the root class (more efficient)
+      const rootClass = classList[0];
+      const rootElements = document.querySelectorAll(`.${rootClass}`);
+      
+      for (const el of rootElements) {
+        let hasAllClasses = true;
+        for (const cls of classList) {
+          if (!el.classList.contains(cls)) {
+            hasAllClasses = false;
+            break;
+          }
+        }
+        if (hasAllClasses) {
+          return el.outerHTML;
+        }
+      }
+      
+      // Strategy 3: If no element has all classes, find one with at least 2 classes
+      for (const el of rootElements) {
+        let matchCount = 0;
+        for (const cls of classList) {
+          if (el.classList.contains(cls)) {
+            matchCount++;
+          }
+        }
+        if (matchCount >= 2) {
+          return el.outerHTML;
+        }
+      }
+      
+      // Strategy 4: Fallback - return first element with root class
+      if (rootElements.length > 0) {
+        return rootElements[0].outerHTML;
+      }
+      
+      return null;
+    }, targetClasses);
+    
+    if (!elementHtml) {
+      throw new Error(`MainLayout element with classes "${targetClasses}" not found on the page`);
+    }
+    
+    console.log(`[Update] Extracted MainLayout element (${elementHtml.length} bytes)`);
+    
+    // Find ParseInfoNew.html file path
+    // The file should be in the project root (same level as bot folder)
+    // When running from bot folder, go up one level
+    const fileCandidates = [
+      path.resolve(process.cwd(), "..", "ParseInfoNew.html"), // From bot/ folder
+      path.resolve(process.cwd(), "ParseInfoNew.html"), // If already in root
+      path.resolve(process.cwd(), "..", "..", "ParseInfoNew.html") // Fallback
+    ];
+    
+    let filePath: string | undefined;
+    for (const candidate of fileCandidates) {
+      try {
+        // Check if directory exists and is writable
+        const dir = path.dirname(candidate);
+        await fs.access(dir);
+        filePath = candidate;
+        console.log(`[Update] Will save to ${filePath}`);
+        break;
+      } catch {
+        // Try next candidate
+      }
+    }
+    
+    if (!filePath) {
+      // Use the first candidate (one level up from bot folder)
+      filePath = fileCandidates[0];
+      const dir = path.dirname(filePath);
+      try {
+        await fs.mkdir(dir, { recursive: true });
+        console.log(`[Update] Created directory ${dir}`);
+      } catch (err) {
+        console.warn(`[Update] Could not create directory ${dir}:`, err);
+      }
+    }
+    
+    // Save the element HTML to ParseInfoNew.html
+    await fs.writeFile(filePath, elementHtml, "utf8");
+    console.log(`[Update] Saved MainLayout element to ${filePath}`);
+    
+    // Cleanup
+    await page.close();
+    await browser.close();
+    
+    // Clean up temp directory
+    try {
+      if (uniqueUserDataDir && fsSync.existsSync(uniqueUserDataDir)) {
+        fsSync.rmSync(uniqueUserDataDir, { recursive: true, force: true });
+      }
+    } catch (cleanupErr) {
+      console.warn(`[Update] Could not clean up temp directory: ${cleanupErr}`);
+    }
+    
+    return filePath;
+  } catch (e: any) {
+    // Ensure cleanup even on error
+    if (context) {
+      try {
+        await context.close();
+      } catch {}
+    }
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {}
+    }
+    try {
+      if (uniqueUserDataDir && fsSync.existsSync(uniqueUserDataDir)) {
+        fsSync.rmSync(uniqueUserDataDir, { recursive: true, force: true });
+      }
+    } catch {}
+    
+    console.error(`[Update] Error updating ParseInfoNew.html:`, e);
+    throw e;
+  }
 }
 
 export async function parseW54SnapshotHtmlFromFile(

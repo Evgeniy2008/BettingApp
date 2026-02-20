@@ -6,7 +6,8 @@ import type { Server } from "node:http";
 import {
   parseW54SnapshotHtmlFromFile,
   parseW54SnapshotHtmlFromUrl,
-  parseW54SnapshotHtmlFromUrlWithPuppeteer
+  parseW54SnapshotHtmlFromUrlWithPuppeteer,
+  updateParseInfoNewFromLive
 } from "./parsers/w54Snapshot";
 import { parseW54DetailPageFromUrl } from "./parsers/w54DetailPage";
 
@@ -39,6 +40,20 @@ app.get("/api/w54/snapshot", async (req, res) => {
   try {
     const file = (req.query.file as string) || "Parseinfo.html";
     console.log(`[API] /api/w54/snapshot called with file: ${file}`);
+    
+    // If ParseInfoNew.html is requested, update it from live page first
+    if (file === "ParseInfoNew.html" || file.includes("ParseInfoNew.html")) {
+      try {
+        console.log(`[API] Updating ParseInfoNew.html from live page before parsing...`);
+        await updateParseInfoNewFromLive();
+        console.log(`[API] ParseInfoNew.html updated successfully`);
+      } catch (updateErr: any) {
+        console.error(`[API] Failed to update ParseInfoNew.html:`, updateErr);
+        // Continue with existing file if update fails
+        console.log(`[API] Continuing with existing ParseInfoNew.html file`);
+      }
+    }
+    
     const result = await parseW54SnapshotHtmlFromFile(file);
     console.log(`[API] /api/w54/snapshot success, found ${result.matches.length} matches`);
     res.json(result);
@@ -48,30 +63,50 @@ app.get("/api/w54/snapshot", async (req, res) => {
   }
 });
 
-// Parse live site https://w54rjjmb.com/sport?lc=1&ss=all
+// Parse live site https://w54rjjmb.com/sport?lc=1&from_left_menu=&ss=all
 app.get("/api/w54/live", async (req, res) => {
   const requestTime = new Date().toISOString();
   try {
-    const url =
-      (req.query.url as string) ||
-      "https://w54rjjmb.com/sport?lc=1&ss=all";
+    // Always use the correct URL with lc=1&from_left_menu=&ss=all parameters
+    const baseUrl = "https://w54rjjmb.com/sport?lc=1&from_left_menu=&ss=all";
+    const url = (req.query.url as string) || baseUrl;
+    
+    // Ensure URL contains the required parameters
+    let finalUrl = url;
+    if (!finalUrl.includes('lc=1') || !finalUrl.includes('ss=all')) {
+      // If custom URL doesn't have required params, use base URL
+      finalUrl = baseUrl;
+      console.log(`[API] Custom URL missing required parameters, using base URL: ${finalUrl}`);
+    }
+    
     // Use Puppeteer by default to ensure JavaScript-rendered content is loaded
     const usePuppeteer = req.query.puppeteer !== 'false' && req.query.puppeteer !== '0';
     
-    console.log(`[API] /api/w54/live called at ${requestTime}, fetching from: ${url}, usePuppeteer: ${usePuppeteer}`);
+    console.log(`[API] /api/w54/live called at ${requestTime}, fetching from: ${finalUrl}, usePuppeteer: ${usePuppeteer}`);
     
-    // Set headers to prevent caching
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    // Set headers to prevent caching - more aggressive
+    const now = Date.now();
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0, private, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.setHeader('Last-Modified', new Date().toUTCString());
-    res.setHeader('ETag', `"${Date.now()}"`);
+    res.setHeader('Last-Modified', new Date(now).toUTCString());
+    res.setHeader('ETag', `"${now}-${Math.random().toString(36).substring(7)}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-No-Cache', '1');
     
     const result = usePuppeteer 
-      ? await parseW54SnapshotHtmlFromUrlWithPuppeteer(url)
-      : await parseW54SnapshotHtmlFromUrl(url);
+      ? await parseW54SnapshotHtmlFromUrlWithPuppeteer(finalUrl)
+      : await parseW54SnapshotHtmlFromUrl(finalUrl);
     
     console.log(`[API] /api/w54/live success at ${requestTime}, found ${result.matches.length} matches`);
+    
+    // Log first few match IDs to verify they're fresh
+    if (result.matches.length > 0) {
+      const firstMatches = result.matches.slice(0, 3).map(m => 
+        `${m.home} vs ${m.away} (ID: ${m.matchId || 'no-id'}, Live: ${m.isLive || false})`
+      );
+      console.log(`[API] First 3 matches: ${firstMatches.join('; ')}`);
+    }
     
     // Add metadata to response
     const responseWithMeta = {
@@ -79,8 +114,9 @@ app.get("/api/w54/live", async (req, res) => {
       _meta: {
         fetchedAt: requestTime,
         matchCount: result.matches.length,
-        source: url,
-        method: usePuppeteer ? 'puppeteer' : 'fetch'
+        source: finalUrl,
+        method: usePuppeteer ? 'puppeteer' : 'fetch',
+        requestId: `${Date.now()}-${Math.random().toString(36).substring(7)}`
       }
     };
     

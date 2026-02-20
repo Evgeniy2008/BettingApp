@@ -2734,11 +2734,11 @@ html {
   }
 
   .bottom-nav-item.active {
-    color: red;
+    color: #dc2626; /* Darker red */
   }
 
   .bottom-nav-item.active svg {
-    stroke: red;
+    stroke: #dc2626; /* Darker red */
   }
 
   .bottom-nav-label {
