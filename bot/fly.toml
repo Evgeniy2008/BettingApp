@@ -1,0 +1,23 @@
+# Конфигурация для Fly.io
+# Использование: fly launch (в папке bot/)
+
+app = "betsbot-demo"
+primary_region = "fra"  # Frankfurt, можно изменить
+
+[build]
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory_mb = 512
+  cpu_kind = "shared"
+  cpus = 1

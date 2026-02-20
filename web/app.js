@@ -1,5 +1,27 @@
-// API endpoint (adjust port if needed)
-const API_BASE = "http://localhost:3000";
+// API endpoint - автоматически определяет окружение
+// В production использует Render URL или текущий домен, в dev - localhost:3000
+const isProduction = window.location.protocol === 'https:' || 
+                     !window.location.hostname.includes('localhost') && 
+                     !window.location.hostname.includes('127.0.0.1');
+
+// Настройка URL для Node.js API
+// Вариант 1: Если используете Render - укажите URL вашего Render сервиса
+// const RENDER_API_URL = "https://betsbot-xxxx.onrender.com"; // Замените на ваш URL!
+
+// Вариант 2: Если используете прокси через PHP (api/proxy.php)
+// const RENDER_API_URL = window.location.origin + "/api/proxy.php?path=api";
+
+// Вариант 3: Если Node.js на том же домене через Nginx
+// const RENDER_API_URL = window.location.origin;
+
+// По умолчанию используем текущий домен (для Nginx прокси)
+// Если используете Render напрямую, раскомментируйте и укажите URL выше
+const RENDER_API_URL = window.location.origin; // Измените на ваш Render URL если нужно!
+
+const API_BASE = isProduction 
+  ? "http://localhost:3000"  // Production: Render или прокси
+  : "http://localhost:3000"; // Development: локальный Node.js сервер
+
 // PHP API endpoint for bets and wallet
 var PHP_API_BASE = window.location.origin.replace(/:\d+$/, '') + (window.location.port ? '' : '/api');
 
@@ -617,10 +639,8 @@ function closeBetslipMobile() {
 
 // Toggle betslip visibility on mobile
 function toggleBetslipMobile() {
-  if (!isMobile()) return;
   const betslip = document.querySelector('.betslip');
-  if (!betslip) return;
-  if (betslip.classList.contains('betslip-open')) {
+  if (betslip && betslip.classList.contains('betslip-open')) {
     closeBetslipMobile();
   } else {
     openBetslipMobile();
@@ -880,56 +900,51 @@ function switchTab(tabName) {
 }
 
 function setupBottomNav() {
-  const bottomNav = document.getElementById("bottom-nav");
-  if (!bottomNav) return;
+  const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
   
-  // Use event delegation for better reliability
-  bottomNav.addEventListener("click", (e) => {
-    const item = e.target.closest(".bottom-nav-item");
-    if (!item) return;
-    
-    const navName = item.getAttribute("data-nav");
-    if (!navName) return;
-    
-    // Check for special action attribute
-    const action = item.getAttribute("data-action");
-    
-    if (navName === "search") {
-      // Focus on search input
-      const searchInput = document.getElementById("search-input");
-      if (searchInput) {
-        searchInput.focus();
-        // Also switch to sportsbook tab if not already there
-        if (state.activeTab !== "sportsbook") {
+  bottomNavItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      const navName = item.getAttribute("data-nav");
+      if (!navName) return;
+      
+      // Check for special action attribute
+      const action = item.getAttribute("data-action");
+      
+      if (navName === "search") {
+        // Focus on search input
+        const searchInput = document.getElementById("search-input");
+        if (searchInput) {
+          searchInput.focus();
+          // Also switch to sportsbook tab if not already there
+          if (state.activeTab !== "sportsbook") {
+            switchTab("sportsbook");
+          }
+        }
+      } else if (action === "live" || (navName === "sportsbook" && action === "live")) {
+        // Live button - switch to sportsbook and force refresh
+        switchTab("sportsbook");
+        // Force reload matches without cache
+        loadMatches(true);
+      } else if (navName === "betslip") {
+        // Toggle betslip on mobile
+        if (isMobile()) {
+          toggleBetslipMobile();
+          // Mark as active when betslip is open
+          const betslip = document.querySelector('.betslip');
+          if (betslip && betslip.classList.contains('betslip-open')) {
+            item.classList.add("active");
+          } else {
+            item.classList.remove("active");
+          }
+        } else {
+          // On desktop, just switch to sportsbook (betslip is always visible)
           switchTab("sportsbook");
         }
-      }
-    } else if (action === "live" || (navName === "sportsbook" && action === "live")) {
-      // Live button - switch to sportsbook and force refresh
-      switchTab("sportsbook");
-      // Force reload matches without cache
-      loadMatches(true);
-    } else if (navName === "betslip") {
-      // Toggle betslip on mobile
-      e.preventDefault();
-      e.stopPropagation();
-      if (isMobile()) {
-        // Force open betslip
-        const betslip = document.querySelector('.betslip');
-        if (betslip && betslip.classList.contains('betslip-open')) {
-          closeBetslipMobile();
-        } else {
-          openBetslipMobile();
-        }
       } else {
-        // On desktop, just switch to sportsbook (betslip is always visible)
-        switchTab("sportsbook");
+        // Regular tab switch
+        switchTab(navName);
       }
-      return; // Prevent further processing
-    } else {
-      // Regular tab switch
-      switchTab(navName);
-    }
+    });
   });
   
   // Update active state on load
@@ -960,8 +975,6 @@ function updateBottomNavActive() {
       const betslip = document.querySelector('.betslip');
       if (betslip && betslip.classList.contains('betslip-open')) {
         item.classList.add("active");
-      } else {
-        item.classList.remove("active");
       }
     }
   });
@@ -1386,17 +1399,8 @@ function init() {
       renderMatches();
       renderSlip();
       
-      // Обновляем баланс на фронтенде
+      // Обновляем баланс
       if (data.newBalance !== undefined) {
-        // Обновляем currentUser.balance если он доступен
-        if (typeof currentUser !== 'undefined' && currentUser) {
-          currentUser.balance = data.newBalance;
-        }
-        // Обновляем UI через wallet.js если доступно
-        if (typeof window.updateUserUI === 'function') {
-          window.updateUserUI();
-        }
-        // Обновляем баланс в заголовке
         updateProfileBalance();
       }
       

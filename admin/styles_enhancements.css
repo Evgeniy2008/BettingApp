@@ -1,0 +1,177 @@
+/* Express bet row styling */
+.table-row-express {
+  border-left: 3px solid rgba(251, 191, 36, 0.5);
+  background: rgba(251, 191, 36, 0.02);
+}
+
+.table-row-express:hover {
+  background: rgba(251, 191, 36, 0.05);
+}
+
+/* Enhanced value colors */
+.value-large {
+  font-weight: 700 !important;
+  font-size: 24px !important;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%) !important;
+  padding: 8px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.subcard {
+  transition: all 0.2s ease;
+}
+
+.subcard:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.subcard .label {
+  color: rgba(232, 232, 234, 0.7);
+  font-weight: 500;
+}
+
+.table {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.table-header {
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%) !important;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.table-header > div {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.table-row {
+  transition: background-color 0.2s ease;
+}
+
+.table-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.status-badge.status-pending {
+  border-color: rgba(251, 191, 36, 0.7);
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+}
+
+.status-badge.status-active {
+  border-color: rgba(59, 130, 246, 0.7);
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.status-badge.status-won {
+  border-color: rgba(34, 197, 94, 0.7);
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.status-badge.status-lost {
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.status-badge.status-cancelled {
+  border-color: rgba(148, 163, 184, 0.7);
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.status-badge.status-refunded {
+  border-color: rgba(139, 92, 246, 0.7);
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.15);
+}
+
+.badge-pending {
+  border-color: rgba(251, 191, 36, 0.7) !important;
+  color: #fbbf24 !important;
+  background: rgba(251, 191, 36, 0.15) !important;
+  font-weight: 600 !important;
+}
+
+.badge-approved {
+  border-color: rgba(34, 197, 94, 0.7) !important;
+  color: #22c55e !important;
+  background: rgba(34, 197, 94, 0.15) !important;
+  font-weight: 600 !important;
+}
+
+.badge-rejected {
+  border-color: rgba(239, 68, 68, 0.7) !important;
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  font-weight: 600 !important;
+}
+
+.small-btn {
+  border-radius: 6px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: rgba(232, 232, 234, 0.9) !important;
+  padding: 6px 12px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin: 0 2px;
+}
+
+.small-btn:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  transform: translateY(-1px);
+}
+
+.small-btn.primary {
+  border-color: rgba(34, 197, 94, 0.7) !important;
+  background: rgba(34, 197, 94, 0.15) !important;
+  color: #22c55e !important;
+}
+
+.small-btn.primary:hover {
+  background: rgba(34, 197, 94, 0.25) !important;
+  border-color: rgba(34, 197, 94, 0.9) !important;
+}
+
+.small-btn.danger {
+  border-color: rgba(239, 68, 68, 0.7) !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+}
+
+.small-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+  border-color: rgba(239, 68, 68, 0.9) !important;
+}
+
+/* Mobile adaptation for bets table */
+@media (max-width: 768px) {
+  #bets-table .table-header,
+  #bets-table .table-row {
+    grid-template-columns: 70px 80px 100px 80px 70px 80px 70px 100px !important;
+    min-width: 650px !important;
+  }
+}

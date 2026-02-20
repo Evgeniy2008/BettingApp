@@ -1,0 +1,21 @@
+# Конфигурация для Render
+# Этот файл упрощает настройку - Render автоматически использует его
+
+services:
+  - type: web
+    name: betsbot-demo
+    env: node
+    region: frankfurt  # Или другой ближайший регион
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: BOT_TOKEN
+        sync: false  # Укажите вручную в Render Dashboard
+      - key: PORT
+        value: 10000  # Render автоматически назначает порт
+      - key: PUBLIC_WEBAPP_URL
+        sync: false  # Укажите если есть Frontend
+      - key: PUBLIC_ADMIN_URL
+        sync: false  # Укажите если есть Frontend
+      - key: NODE_ENV
+        value: production

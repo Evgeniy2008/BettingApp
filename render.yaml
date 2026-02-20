@@ -1,0 +1,22 @@
+# Конфигурация для Render
+# Этот файл упрощает настройку сервиса на Render
+# Просто создайте Web Service и подключите репозиторий - Render автоматически использует эту конфигурацию
+
+services:
+  - type: web
+    name: betsbot
+    env: node
+    region: frankfurt  # Или другой ближайший регион
+    buildCommand: cd bot && npm install && npm run build
+    startCommand: cd bot && node dist/index.js
+    envVars:
+      - key: BOT_TOKEN
+        sync: false  # Укажите вручную в Render Dashboard
+      - key: PORT
+        value: 10000  # Render автоматически назначает порт
+      - key: PUBLIC_WEBAPP_URL
+        sync: false  # Укажите вручную: https://ваш-домен.com/web
+      - key: PUBLIC_ADMIN_URL
+        sync: false  # Укажите вручную: https://ваш-домен.com/admin
+      - key: NODE_ENV
+        value: production

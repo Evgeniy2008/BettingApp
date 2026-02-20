@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // API-Sports configuration
 define('API_SPORTS_BASE_URL', 'https://v3.football.api-sports.io');
-define('API_SPORTS_KEY', '52da50550958ad43c690929166dd548d');
+define('API_SPORTS_KEY', 'e0159591de2cf3d1b077fc4af39fbfef');
 
 /**
  * Makes a request to API-Sports
@@ -28,8 +28,7 @@ function apiSportsRequest($endpoint, $params = []) {
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'x-rapidapi-key: ' . API_SPORTS_KEY,
-        'x-rapidapi-host: v3.football.api-sports.io',
+        'x-apisports-key: ' . API_SPORTS_KEY,
         'Accept: application/json'
     ]);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);

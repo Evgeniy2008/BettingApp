@@ -30,7 +30,16 @@ app.use(
   cors({
     origin: "*", // Allow all origins for dev (Live Server, file://, etc.)
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"]
+    allowedHeaders: [
+      "Content-Type",
+      "if-none-match",
+      "if-modified-since",
+      "cache-control",
+      "pragma",
+      "expires"
+    ],
+    exposedHeaders: ["etag", "last-modified"],
+    credentials: false
   })
 );
 app.get("/health", (_req, res) => res.json({ ok: true }));

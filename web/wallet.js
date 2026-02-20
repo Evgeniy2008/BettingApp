@@ -325,9 +325,6 @@ function updateUserUI() {
   window.dispatchEvent(new CustomEvent('userUpdated'));
 }
 
-// Export updateUserUI globally so app.js can call it
-window.updateUserUI = updateUserUI;
-
 async function loadWallets() {
   // Показываем skeleton перед загрузкой
   showWalletsSkeleton();
