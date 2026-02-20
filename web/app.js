@@ -617,8 +617,10 @@ function closeBetslipMobile() {
 
 // Toggle betslip visibility on mobile
 function toggleBetslipMobile() {
+  if (!isMobile()) return;
   const betslip = document.querySelector('.betslip');
-  if (betslip && betslip.classList.contains('betslip-open')) {
+  if (!betslip) return;
+  if (betslip.classList.contains('betslip-open')) {
     closeBetslipMobile();
   } else {
     openBetslipMobile();
@@ -878,51 +880,56 @@ function switchTab(tabName) {
 }
 
 function setupBottomNav() {
-  const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
+  const bottomNav = document.getElementById("bottom-nav");
+  if (!bottomNav) return;
   
-  bottomNavItems.forEach((item) => {
-    item.addEventListener("click", () => {
-      const navName = item.getAttribute("data-nav");
-      if (!navName) return;
-      
-      // Check for special action attribute
-      const action = item.getAttribute("data-action");
-      
-      if (navName === "search") {
-        // Focus on search input
-        const searchInput = document.getElementById("search-input");
-        if (searchInput) {
-          searchInput.focus();
-          // Also switch to sportsbook tab if not already there
-          if (state.activeTab !== "sportsbook") {
-            switchTab("sportsbook");
-          }
-        }
-      } else if (action === "live" || (navName === "sportsbook" && action === "live")) {
-        // Live button - switch to sportsbook and force refresh
-        switchTab("sportsbook");
-        // Force reload matches without cache
-        loadMatches(true);
-      } else if (navName === "betslip") {
-        // Toggle betslip on mobile
-        if (isMobile()) {
-          toggleBetslipMobile();
-          // Mark as active when betslip is open
-          const betslip = document.querySelector('.betslip');
-          if (betslip && betslip.classList.contains('betslip-open')) {
-            item.classList.add("active");
-          } else {
-            item.classList.remove("active");
-          }
-        } else {
-          // On desktop, just switch to sportsbook (betslip is always visible)
+  // Use event delegation for better reliability
+  bottomNav.addEventListener("click", (e) => {
+    const item = e.target.closest(".bottom-nav-item");
+    if (!item) return;
+    
+    const navName = item.getAttribute("data-nav");
+    if (!navName) return;
+    
+    // Check for special action attribute
+    const action = item.getAttribute("data-action");
+    
+    if (navName === "search") {
+      // Focus on search input
+      const searchInput = document.getElementById("search-input");
+      if (searchInput) {
+        searchInput.focus();
+        // Also switch to sportsbook tab if not already there
+        if (state.activeTab !== "sportsbook") {
           switchTab("sportsbook");
         }
-      } else {
-        // Regular tab switch
-        switchTab(navName);
       }
-    });
+    } else if (action === "live" || (navName === "sportsbook" && action === "live")) {
+      // Live button - switch to sportsbook and force refresh
+      switchTab("sportsbook");
+      // Force reload matches without cache
+      loadMatches(true);
+    } else if (navName === "betslip") {
+      // Toggle betslip on mobile
+      e.preventDefault();
+      e.stopPropagation();
+      if (isMobile()) {
+        // Force open betslip
+        const betslip = document.querySelector('.betslip');
+        if (betslip && betslip.classList.contains('betslip-open')) {
+          closeBetslipMobile();
+        } else {
+          openBetslipMobile();
+        }
+      } else {
+        // On desktop, just switch to sportsbook (betslip is always visible)
+        switchTab("sportsbook");
+      }
+      return; // Prevent further processing
+    } else {
+      // Regular tab switch
+      switchTab(navName);
+    }
   });
   
   // Update active state on load
@@ -953,6 +960,8 @@ function updateBottomNavActive() {
       const betslip = document.querySelector('.betslip');
       if (betslip && betslip.classList.contains('betslip-open')) {
         item.classList.add("active");
+      } else {
+        item.classList.remove("active");
       }
     }
   });
@@ -1377,8 +1386,17 @@ function init() {
       renderMatches();
       renderSlip();
       
-      // Обновляем баланс
+      // Обновляем баланс на фронтенде
       if (data.newBalance !== undefined) {
+        // Обновляем currentUser.balance если он доступен
+        if (typeof currentUser !== 'undefined' && currentUser) {
+          currentUser.balance = data.newBalance;
+        }
+        // Обновляем UI через wallet.js если доступно
+        if (typeof window.updateUserUI === 'function') {
+          window.updateUserUI();
+        }
+        // Обновляем баланс в заголовке
         updateProfileBalance();
       }
       
