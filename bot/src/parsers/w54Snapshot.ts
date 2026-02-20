@@ -906,6 +906,49 @@ export async function updateParseInfoNewFromLive(): Promise<string> {
       timeout: 60000
     });
     
+    // Switch language to English by clicking on UI elements
+    console.log(`[Update] Switching language to English...`);
+    try {
+      // Wait for language switcher button to appear
+      await page.waitForSelector('.CurrentLocale_switchButton__17blA', { timeout: 10000 });
+      
+      // Click on language switcher button to open dropdown
+      console.log(`[Update] Clicking language switcher button...`);
+      await page.click('.CurrentLocale_switchButton__17blA');
+      
+      // Wait for dropdown menu to appear (no delay, just wait for selector)
+      await page.waitForSelector('.LocalesList_list__rbZ9E', { timeout: 5000 });
+      
+      // Find and click on EN button in the dropdown
+      console.log(`[Update] Clicking EN language button...`);
+      const enButtonClicked = await page.evaluate(() => {
+        // Find all language buttons
+        const buttons = document.querySelectorAll('.LocalesList_button__jtSPe');
+        for (const btn of buttons) {
+          const textSpan = btn.querySelector('.LocalesList_buttonText__pZAAv');
+          const text = textSpan ? textSpan.textContent || '' : '';
+          // Look for button with "EN" text (first one in the list)
+          if (text.trim() === 'EN') {
+            (btn as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
+      });
+      
+      if (!enButtonClicked) {
+        console.warn(`[Update] EN button not found in dropdown`);
+      } else {
+        // Wait 1 second for language to change
+        console.log(`[Update] Waiting 1 second for language to change...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        console.log(`[Update] Language switched to English successfully`);
+      }
+    } catch (err) {
+      console.warn(`[Update] Failed to switch language via UI, continuing with default language:`, err);
+    }
+    
     // Wait for the MainLayout element to appear
     console.log(`[Update] Waiting for MainLayout element...`);
     try {

@@ -1673,33 +1673,8 @@ function initTelegramWebApp() {
 window.addEventListener("DOMContentLoaded", () => {
   initTelegramWebApp();
   init();
-  // Force refresh on initial load to ensure fresh data
+  // Load matches only on initial page load
   loadMatches(true);
-  
-  // Auto-refresh matches every 30 seconds with force refresh to bypass cache
-  let refreshInterval = setInterval(() => {
-    console.log('[App] Auto-refreshing matches (force refresh)...');
-    loadMatches(true); // Force refresh to bypass cache
-  }, 30000); // 30 seconds
-  
-  // Store interval ID for potential cleanup
-  window.matchRefreshInterval = refreshInterval;
-  
-  // Refresh when page becomes visible (user returns to tab)
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.activeTab === 'sportsbook') {
-      console.log('[App] Page became visible, forcing refresh...');
-      loadMatches(true);
-    }
-  });
-  
-  // Also refresh on focus (when user clicks on window)
-  window.addEventListener('focus', () => {
-    if (state.activeTab === 'sportsbook') {
-      console.log('[App] Window focused, forcing refresh...');
-      loadMatches(true);
-    }
-  });
   
   // Setup mobile betslip handlers
   const floatBtn = document.getElementById("betslip-float-btn");
