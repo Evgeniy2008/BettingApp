@@ -672,8 +672,23 @@ function parseW54SnapshotHtml(html: string, source: string): W54SnapshotResult {
 
       $row.find("button[data-outcome-alias][data-odd]").each((_btnIdx, btnEl) => {
         const $btn = $(btnEl);
+        
+        // Skip cancelled/disabled outcomes
+        const isDisabled = $btn.hasClass("OutcomeItem_disabled") || 
+                          $btn.hasClass("disabled") || 
+                          $btn.prop("disabled") ||
+                          $btn.attr("disabled") !== undefined;
+        
+        const dataOdd = String($btn.attr("data-odd") || "");
+        const buttonText = textTrim($btn.text());
+        
+        // Skip if disabled, empty odd, or shows "-" (cancelled)
+        if (isDisabled || !dataOdd || dataOdd === "" || buttonText === "-" || buttonText === "") {
+          return;
+        }
+        
         const alias = String($btn.attr("data-outcome-alias") || "").toLowerCase();
-        const odd = parseOddFromText(String($btn.attr("data-odd") || $btn.text()));
+        const odd = parseOddFromText(dataOdd || buttonText);
         
         if (!odd) return;
 
@@ -900,8 +915,57 @@ export async function updateParseInfoNewFromLive(): Promise<string> {
       console.warn(`[Update] Element not found with waitForSelector, continuing...`);
     }
     
-    // Wait a bit more for React to fully render
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Scroll down to load all content (lazy loading / infinite scroll) - no delays, maximum speed
+    console.log(`[Update] Scrolling page to load all content...`);
+    let previousHeight = 0;
+    let currentHeight = 0;
+    let scrollAttempts = 0;
+    const maxScrollAttempts = 50; // Increased since we're scrolling very fast
+    let noChangeCount = 0; // Count consecutive times with no height change
+    
+    do {
+      previousHeight = currentHeight;
+      
+      // Scroll to bottom
+      currentHeight = await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+        return document.body.scrollHeight;
+      });
+      
+      // Smart wait: wait for height to change with minimal timeout
+      try {
+        await page.waitForFunction(
+          (prevHeight) => document.body.scrollHeight > prevHeight,
+          { timeout: 200, polling: 50 },
+          previousHeight
+        );
+      } catch {
+        // Timeout is expected if no new content loads
+      }
+      
+      // Get current height after potential load
+      currentHeight = await page.evaluate(() => document.body.scrollHeight);
+      
+      scrollAttempts++;
+      
+      if (currentHeight === previousHeight) {
+        noChangeCount++;
+        // If height didn't change 2 times in a row, we're done
+        if (noChangeCount >= 2) {
+          console.log(`[Update] No more content loading after ${scrollAttempts} attempts`);
+          break;
+        }
+        // No delay - continue immediately
+      } else {
+        noChangeCount = 0; // Reset counter when content loads
+        console.log(`[Update] Scroll ${scrollAttempts}: loaded more content (height: ${currentHeight})`);
+      }
+    } while (scrollAttempts < maxScrollAttempts);
+    
+    // Scroll back to top - no delay
+    await page.evaluate(() => window.scrollTo(0, 0));
+    
+    console.log(`[Update] Finished scrolling in ${scrollAttempts} attempts`);
     
     // Extract the MainLayout element's HTML
     // Try multiple selector strategies
