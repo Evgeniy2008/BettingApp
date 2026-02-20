@@ -43,8 +43,16 @@ function textTrim(s: string | null | undefined) {
 }
 
 function parseOddFromText(s: string) {
-  const m = s.replace(",", ".").match(/(\d+(?:\.\d+)?)/);
-  return m ? Number(m[1]) : undefined;
+  if (!s || typeof s !== 'string') return undefined;
+  // Replace comma with dot for decimal separator
+  const normalized = s.replace(",", ".");
+  // Match number with optional decimal part (captures all decimal digits)
+  const m = normalized.match(/(\d+\.?\d*)/);
+  if (!m) return undefined;
+  // Use parseFloat to preserve decimal precision
+  const value = parseFloat(m[1]);
+  // Return undefined if not a valid number
+  return isNaN(value) ? undefined : value;
 }
 
 /**

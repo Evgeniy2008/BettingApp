@@ -306,7 +306,8 @@ const state = {
 };
 
 function formatOdd(n) {
-  return n.toFixed(2);
+  // Return number as string without rounding - preserve full precision
+  return String(n);
 }
 
 function renderLeagues() {
