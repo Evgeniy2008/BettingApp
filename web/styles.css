@@ -68,6 +68,49 @@ html {
   display: none;
 }
 
+.header-profile-desktop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 12px;
+}
+
+.profile-balance-desktop {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f4f4f5;
+  white-space: nowrap;
+}
+
+.profile-icon-btn-desktop {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f4f4f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.profile-icon-btn-desktop:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.profile-icon-btn-desktop:active {
+  transform: scale(0.95);
+}
+
+.profile-icon-btn-desktop svg {
+  width: 20px;
+  height: 20px;
+}
+
 .match-actions-mobile {
   display: none;
 }
@@ -1408,6 +1451,28 @@ html {
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
 }
 
+/* Hide desktop profile on mobile, show mobile profile */
+@media (max-width: 768px) {
+  .header-profile-desktop {
+    display: none !important;
+  }
+  
+  .header-profile-mobile {
+    display: flex !important;
+  }
+}
+
+/* Hide mobile profile on desktop, show desktop profile */
+@media (min-width: 769px) {
+  .header-profile-mobile {
+    display: none !important;
+  }
+  
+  .header-profile-desktop {
+    display: flex !important;
+  }
+}
+
 /* Mobile Adaptation for Telegram Web App */
 @media (max-width: 768px) {
   .app {
@@ -2614,6 +2679,58 @@ html {
 .bets-empty-text {
   font-size: 14px;
   color: rgba(232, 232, 234, 0.6);
+}
+
+/* Express bet styles */
+.bet-card-express {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: linear-gradient(135deg, #14151d 0%, rgba(251, 191, 36, 0.05) 100%);
+}
+
+.bet-card-express-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bet-card-match-item {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.bet-card-match-item-express {
+  margin-top: 8px;
+  border-left: 3px solid rgba(251, 191, 36, 0.5);
+}
+
+.bet-card-match-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bet-card-match-outcome {
+  font-size: 11px;
+  color: rgba(251, 191, 36, 0.9);
+  font-weight: 600;
+  padding: 2px 6px;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
 /* Mobile styles for Bets page */

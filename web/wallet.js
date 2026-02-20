@@ -1,5 +1,8 @@
 // PHP API для системы выплат
-const PHP_API_BASE = "/api";
+// Use existing PHP_API_BASE if defined in app.js, otherwise use default
+if (typeof PHP_API_BASE === 'undefined') {
+  var PHP_API_BASE = "/api";
+}
 let currentUser = null;
 
 // Функция для показа уведомлений через SweetAlert2
@@ -276,7 +279,17 @@ function updateUserUI() {
   const debtContainer = document.getElementById('wallet-debt-container');
   const currentDebtEl = document.getElementById('wallet-current-debt');
   
-  if (balanceEl) balanceEl.textContent = `$${currentUser.balance.toFixed(2)}`;
+  // Mobile balance
+  const profileBalanceMobile = document.getElementById('profile-balance-mobile');
+  // Desktop balance
+  const profileBalanceDesktop = document.getElementById('profile-balance-desktop');
+  
+  const balanceText = `$${currentUser.balance.toFixed(2)}`;
+  
+  if (balanceEl) balanceEl.textContent = balanceText;
+  if (profileBalanceMobile) profileBalanceMobile.textContent = balanceText;
+  if (profileBalanceDesktop) profileBalanceDesktop.textContent = balanceText;
+  
   if (creditLimitEl) creditLimitEl.textContent = `$${currentUser.credit_limit.toFixed(2)}`;
   
   // Показываем кредитный долг, если он есть

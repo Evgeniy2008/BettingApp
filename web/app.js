@@ -1,5 +1,7 @@
 // API endpoint (adjust port if needed)
 const API_BASE = "http://localhost:3000";
+// PHP API endpoint for bets and wallet
+var PHP_API_BASE = window.location.origin.replace(/:\d+$/, '') + (window.location.port ? '' : '/api');
 
 // Source URL for parsing matches
 // Matches are parsed from: https://w54rjjmb.com/sport?lc=1&from_left_menu=&ss=all
@@ -864,9 +866,9 @@ function switchTab(tabName) {
       }
     });
   
-  // Render bets when switching to bets tab
+  // Load bets when switching to bets tab
   if (tabName === "bets") {
-    renderBets();
+    loadBets();
   }
   
   // Close betslip on mobile when switching tabs (except when opening betslip)
@@ -956,7 +958,38 @@ function updateBottomNavActive() {
   });
 }
 
-// Test data for bets (will be replaced with API call later)
+// Global bets array
+let bets = [];
+
+// Load bets from API
+async function loadBets() {
+  try {
+    const status = state.betsFilter !== 'all' ? `&status=${state.betsFilter}` : '';
+    const response = await fetch(`${PHP_API_BASE}/bets.php?${status}`, {
+      method: 'GET',
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    if (data.success && data.bets) {
+      bets = data.bets;
+      console.log(`[App] Loaded ${bets.length} bets from API`);
+    } else {
+      bets = [];
+    }
+  } catch (error) {
+    console.error('[App] Error loading bets:', error);
+    bets = [];
+  }
+  
+  renderBets();
+}
+
+// Test data for bets (will be replaced with API call later) - DEPRECATED, use bets array
 const testBets = [
   {
     id: "BET-001",
@@ -1074,10 +1107,10 @@ function renderBets() {
   
   if (!betsList) return;
   
-  // Filter bets by status
-  let filteredBets = testBets;
+  // Use real bets data from API
+  let filteredBets = bets;
   if (state.betsFilter !== "all") {
-    filteredBets = testBets.filter(bet => bet.status === state.betsFilter);
+    filteredBets = bets.filter(bet => bet.status === state.betsFilter);
   }
   
   // Sort by date (newest first)
@@ -1097,44 +1130,71 @@ function renderBets() {
     const outcomeLabel = formatBetOutcomeLabel(bet.outcome);
     
     let amountClass = "";
-    let amountText = `$${bet.stake.toFixed(2)}`;
+    let amountText = `$${Number(bet.stake).toFixed(2)}`;
     if (bet.status === "won" && bet.winAmount) {
       amountClass = "amount-won";
-      amountText = `+$${bet.winAmount.toFixed(2)}`;
+      amountText = `+$${Number(bet.winAmount).toFixed(2)}`;
     } else if (bet.status === "lost") {
       amountClass = "amount-lost";
-      amountText = `-$${bet.stake.toFixed(2)}`;
+      amountText = `-$${Number(bet.stake).toFixed(2)}`;
     } else if (bet.status === "cancelled") {
-      amountText = `$${bet.stake.toFixed(2)} (refunded)`;
+      amountText = `$${Number(bet.stake).toFixed(2)} (refunded)`;
     }
     
-    return `
-      <div class="bet-card">
-        <div class="bet-card-header">
-          <div class="bet-card-id">${bet.id}</div>
-          <div class="bet-card-status ${statusClass}">${bet.status}</div>
+    // Формируем HTML для всех матчей (для экспресс-ставок)
+    let matchesHtml = '';
+    if (bet.isExpress && bet.matches && bet.matches.length > 0) {
+      matchesHtml = bet.matches.map((match, idx) => `
+        <div class="bet-card-match-item ${idx > 0 ? 'bet-card-match-item-express' : ''}">
+          <div class="bet-card-match-teams">
+            <span class="bet-card-team">${match.home}</span>
+            <span class="bet-card-vs">vs</span>
+            <span class="bet-card-team">${match.away}</span>
+          </div>
+          <div class="bet-card-match-info">
+            <span class="bet-card-league">${match.league || ''}</span>
+            <span class="bet-card-match-outcome">${match.outcome.label} @ ${formatOdd(match.outcome.odd)}</span>
+          </div>
         </div>
+      `).join('');
+    } else {
+      matchesHtml = `
         <div class="bet-card-match">
           <div class="bet-card-match-teams">
             <span class="bet-card-team">${bet.match.home}</span>
             <span class="bet-card-vs">vs</span>
             <span class="bet-card-team">${bet.match.away}</span>
           </div>
-          <div class="bet-card-league">${bet.match.league}</div>
+          <div class="bet-card-league">${bet.match.league || ''}</div>
         </div>
+      `;
+    }
+    
+    return `
+      <div class="bet-card ${bet.isExpress ? 'bet-card-express' : ''}">
+        <div class="bet-card-header">
+          <div class="bet-card-id">
+            ${bet.id}
+            ${bet.isExpress ? '<span class="bet-card-express-badge">Express</span>' : ''}
+          </div>
+          <div class="bet-card-status ${statusClass}">${bet.status}</div>
+        </div>
+        ${matchesHtml}
+        ${!bet.isExpress ? `
         <div class="bet-card-outcome">
           <span class="bet-card-outcome-label">Bet:</span>
-          <span class="bet-card-outcome-value">${outcomeLabel} @ ${bet.outcome.odd.toFixed(2)}</span>
+          <span class="bet-card-outcome-value">${outcomeLabel} @ ${formatOdd(bet.outcome.odd)}</span>
         </div>
+        ` : ''}
         <div class="bet-card-details">
           <div class="bet-card-detail-item">
             <div class="bet-card-detail-label">Stake</div>
-            <div class="bet-card-detail-value">$${bet.stake.toFixed(2)}</div>
+            <div class="bet-card-detail-value">$${Number(bet.stake).toFixed(2)}</div>
           </div>
           <div class="bet-card-detail-item">
             <div class="bet-card-detail-label">${bet.status === "won" ? "Won" : bet.status === "lost" ? "Lost" : "Potential Win"}</div>
             <div class="bet-card-detail-value ${bet.status === "won" ? "amount-won" : bet.status === "lost" ? "amount-lost" : ""}">
-              ${bet.status === "won" && bet.winAmount ? `$${bet.winAmount.toFixed(2)}` : bet.status === "lost" ? "$0.00" : `$${bet.potentialWin.toFixed(2)}`}
+              ${bet.status === "won" && bet.winAmount ? `$${Number(bet.winAmount).toFixed(2)}` : bet.status === "lost" ? "$0.00" : `$${Number(bet.potentialWin).toFixed(2)}`}
             </div>
           </div>
         </div>
@@ -1159,9 +1219,9 @@ function setupBetsFilters() {
       filterButtons.forEach(b => b.classList.remove("bet-filter-active"));
       btn.classList.add("bet-filter-active");
       
-      // Update state and re-render
+      // Update state and reload bets
       state.betsFilter = status;
-      renderBets();
+      loadBets();
     });
   });
 }
@@ -1173,7 +1233,7 @@ function init() {
   setupTabs();
   setupBottomNav();
   setupBetsFilters();
-  renderBets();
+  // Don't load bets on init, only when user switches to bets tab
   // Set initial active state for bottom nav
   updateBottomNavActive();
 
@@ -1272,18 +1332,77 @@ function init() {
     renderSlip();
   });
 
-  document.getElementById("place-bet-btn").addEventListener("click", () => {
+  document.getElementById("place-bet-btn").addEventListener("click", async () => {
     if (!state.slip.length || !state.stake) return;
-    if (typeof Swal !== 'undefined') {
-      Swal.fire({
-        title: 'Demo',
-        text: 'Bet submitted (no backend yet).',
-        icon: 'info',
-        confirmButtonText: 'OK',
-        confirmButtonColor: '#22c55e'
+    
+    const placeBtn = document.getElementById("place-bet-btn");
+    placeBtn.disabled = true;
+    placeBtn.textContent = "Placing bet...";
+    
+    try {
+      const response = await fetch(`${PHP_API_BASE}/bets.php`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          slip: state.slip,
+          stake: state.stake
+        })
       });
-    } else {
-      alert("Demo: bet submitted (no backend yet).");
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to place bet');
+      }
+      
+      // Успешно создана ставка
+      if (typeof Swal !== 'undefined') {
+        await Swal.fire({
+          title: 'Success!',
+          text: `Bet placed successfully! Bet ID: ${data.bets[0].id}`,
+          icon: 'success',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#22c55e'
+        });
+      } else {
+        alert(`Bet placed successfully! Bet ID: ${data.bets[0].id}`);
+      }
+      
+      // Очищаем betslip
+      state.slip = [];
+      state.stake = 0;
+      renderMatches();
+      renderSlip();
+      
+      // Обновляем баланс
+      if (data.newBalance !== undefined) {
+        updateProfileBalance();
+      }
+      
+      // Обновляем список ставок, если мы на странице ставок
+      if (state.activeTab === 'bets') {
+        await loadBets();
+      }
+      
+    } catch (error) {
+      console.error('Error placing bet:', error);
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          title: 'Error',
+          text: error.message || 'Failed to place bet',
+          icon: 'error',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#ef4444'
+        });
+      } else {
+        alert('Error: ' + (error.message || 'Failed to place bet'));
+      }
+    } finally {
+      placeBtn.disabled = false;
+      placeBtn.textContent = "Place bet";
     }
   });
 
@@ -1754,6 +1873,21 @@ window.addEventListener("DOMContentLoaded", () => {
   
   // Handle profile icon click
   const profileIconBtn = document.getElementById('profile-icon-btn');
+  const profileIconBtnDesktop = document.getElementById('profile-icon-btn-desktop');
+  
+  // Handle profile icon click (mobile)
+  if (profileIconBtn) {
+    profileIconBtn.addEventListener('click', () => {
+      switchTab('profile');
+    });
+  }
+  
+  // Handle profile icon click (desktop)
+  if (profileIconBtnDesktop) {
+    profileIconBtnDesktop.addEventListener('click', () => {
+      switchTab('profile');
+    });
+  }
   if (profileIconBtn) {
     profileIconBtn.addEventListener('click', () => {
       const profileTab = document.querySelector('[data-tab="profile"]');
@@ -1766,9 +1900,14 @@ window.addEventListener("DOMContentLoaded", () => {
   // Update profile balance in header
   function updateProfileBalance() {
     if (typeof currentUser !== 'undefined' && currentUser) {
-      const balanceEl = document.getElementById('profile-balance-mobile');
-      if (balanceEl && currentUser.balance !== undefined) {
-        balanceEl.textContent = `$${currentUser.balance.toFixed(2)}`;
+      const balanceText = `$${currentUser.balance.toFixed(2)}`;
+      const balanceElMobile = document.getElementById('profile-balance-mobile');
+      const balanceElDesktop = document.getElementById('profile-balance-desktop');
+      if (balanceElMobile && currentUser.balance !== undefined) {
+        balanceElMobile.textContent = balanceText;
+      }
+      if (balanceElDesktop && currentUser.balance !== undefined) {
+        balanceElDesktop.textContent = balanceText;
       }
     }
   }

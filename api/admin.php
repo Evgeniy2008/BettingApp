@@ -497,4 +497,243 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     sendJSON(['success' => true]);
 }
 
+// ========== УПРАВЛЕНИЕ СТАВКАМИ ==========
+
+// Получение списка ставок
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'bets') {
+    checkAdminAuth();
+    $db = getDB();
+    
+    $search = $_GET['search'] ?? '';
+    $status = $_GET['status'] ?? '';
+    $userId = $_GET['user_id'] ?? '';
+    
+    $query = "SELECT b.*, u.telegram_username, u.telegram_id, u.id as user_db_id 
+              FROM bets b 
+              LEFT JOIN users u ON b.user_id = u.id WHERE 1=1";
+    $params = [];
+    
+    if (!empty($search)) {
+        $query .= " AND (b.bet_id LIKE ? OR b.match_home LIKE ? OR b.match_away LIKE ? OR u.telegram_username LIKE ?)";
+        $searchParam = "%$search%";
+        $params = [$searchParam, $searchParam, $searchParam, $searchParam];
+    }
+    
+    if (!empty($status) && in_array($status, ['pending', 'active', 'won', 'lost', 'cancelled', 'refunded'])) {
+        $query .= " AND b.status = ?";
+        $params[] = $status;
+    }
+    
+    if (!empty($userId)) {
+        $query .= " AND b.user_id = ?";
+        $params[] = intval($userId);
+    }
+    
+    $query .= " ORDER BY b.created_at DESC LIMIT 200";
+    $stmt = $db->prepare($query);
+    $stmt->execute($params);
+    $bets = $stmt->fetchAll();
+    
+    sendJSON([
+        'success' => true,
+        'bets' => array_map(function($b) {
+            return [
+                'id' => $b['id'],
+                'bet_id' => $b['bet_id'],
+                'user_id' => $b['user_id'],
+                'user_tg' => $b['telegram_username'] ? '@' . $b['telegram_username'] : ($b['telegram_id'] ? 'ID: ' . $b['telegram_id'] : 'N/A'),
+                'match' => [
+                    'id' => $b['match_id'],
+                    'line_id' => $b['line_id'],
+                    'home' => $b['match_home'],
+                    'away' => $b['match_away'],
+                    'league' => $b['match_league']
+                ],
+                'outcome' => [
+                    'key' => $b['outcome_key'],
+                    'label' => $b['outcome_label'],
+                    'type' => $b['outcome_type'],
+                    'value' => $b['outcome_value'],
+                    'odd' => floatval($b['odd'])
+                ],
+                'stake' => floatval($b['stake']),
+                'potential_win' => floatval($b['potential_win']),
+                'win_amount' => $b['win_amount'] ? floatval($b['win_amount']) : null,
+                'status' => $b['status'],
+                'admin_notes' => $b['admin_notes'],
+                'bet_details' => $b['bet_details'], // Include bet_details for express bets
+                'created_at' => $b['created_at'],
+                'settled_at' => $b['settled_at'],
+                'cancelled_at' => $b['cancelled_at']
+            ];
+        }, $bets)
+    ]);
+}
+
+// Получение детальной информации о ставке
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'bet-detail') {
+    checkAdminAuth();
+    $betId = $_GET['bet_id'] ?? '';
+    
+    if (empty($betId)) {
+        sendJSON(['error' => 'Bet ID is required'], 400);
+    }
+    
+    $db = getDB();
+    $stmt = $db->prepare("SELECT b.*, u.telegram_username, u.telegram_id, u.balance, u.total_staked 
+                          FROM bets b 
+                          LEFT JOIN users u ON b.user_id = u.id 
+                          WHERE b.bet_id = ?");
+    $stmt->execute([$betId]);
+    $bet = $stmt->fetch();
+    
+    if (!$bet) {
+        sendJSON(['error' => 'Bet not found'], 404);
+    }
+    
+    sendJSON([
+        'success' => true,
+        'bet' => [
+            'id' => $bet['id'],
+            'bet_id' => $bet['bet_id'],
+            'user' => [
+                'id' => $bet['user_id'],
+                'telegram_username' => $bet['telegram_username'],
+                'telegram_id' => $bet['telegram_id'],
+                'balance' => floatval($bet['balance']),
+                'total_staked' => floatval($bet['total_staked'])
+            ],
+            'match' => [
+                'id' => $bet['match_id'],
+                'line_id' => $bet['line_id'],
+                'home' => $bet['match_home'],
+                'away' => $bet['match_away'],
+                'league' => $bet['match_league']
+            ],
+            'outcome' => [
+                'key' => $bet['outcome_key'],
+                'label' => $bet['outcome_label'],
+                'type' => $bet['outcome_type'],
+                'value' => $bet['outcome_value'],
+                'odd' => floatval($bet['odd'])
+            ],
+            'stake' => floatval($bet['stake']),
+            'potential_win' => floatval($bet['potential_win']),
+            'win_amount' => $bet['win_amount'] ? floatval($bet['win_amount']) : null,
+            'status' => $bet['status'],
+            'admin_notes' => $bet['admin_notes'],
+            'bet_details' => $bet['bet_details'], // Include bet_details for express bets
+            'created_at' => $bet['created_at'],
+            'settled_at' => $bet['settled_at'],
+            'cancelled_at' => $bet['cancelled_at'],
+            'updated_at' => $bet['updated_at']
+        ]
+    ]);
+}
+
+// Изменение статуса ставки
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'update-bet-status') {
+    checkAdminAuth();
+    $data = getRequestData();
+    
+    $betId = $data['bet_id'] ?? '';
+    $newStatus = $data['status'] ?? '';
+    $winAmount = isset($data['win_amount']) ? floatval($data['win_amount']) : null;
+    $notes = trim($data['notes'] ?? '');
+    
+    if (empty($betId) || empty($newStatus)) {
+        sendJSON(['error' => 'Bet ID and status are required'], 400);
+    }
+    
+    if (!in_array($newStatus, ['pending', 'active', 'won', 'lost', 'cancelled', 'refunded'])) {
+        sendJSON(['error' => 'Invalid status'], 400);
+    }
+    
+    $db = getDB();
+    
+    try {
+        $db->beginTransaction();
+        
+        // Получаем текущую ставку
+        $stmt = $db->prepare("SELECT * FROM bets WHERE bet_id = ?");
+        $stmt->execute([$betId]);
+        $bet = $stmt->fetch();
+        
+        if (!$bet) {
+            $db->rollBack();
+            sendJSON(['error' => 'Bet not found'], 404);
+        }
+        
+        $oldStatus = $bet['status'];
+        $userId = $bet['user_id'];
+        $stake = floatval($bet['stake']);
+        
+        // Обновляем статус ставки
+        $updateFields = ['status = ?'];
+        $updateParams = [$newStatus];
+        
+        if ($newStatus === 'won') {
+            // Если win_amount не указан, используем potential_win (полная сумма выигрыша)
+            if ($winAmount === null) {
+                $winAmount = floatval($bet['potential_win']);
+            }
+            $updateFields[] = 'win_amount = ?';
+            $updateFields[] = 'settled_at = NOW()';
+            $updateParams[] = $winAmount;
+        } elseif (in_array($newStatus, ['lost'])) {
+            $updateFields[] = 'settled_at = NOW()';
+        } elseif ($newStatus === 'cancelled' || $newStatus === 'refunded') {
+            $updateFields[] = 'cancelled_at = NOW()';
+        }
+        
+        if (!empty($notes)) {
+            $updateFields[] = 'admin_notes = ?';
+            $updateParams[] = $notes;
+        }
+        
+        $updateParams[] = $betId;
+        $stmt = $db->prepare("UPDATE bets SET " . implode(', ', $updateFields) . " WHERE bet_id = ?");
+        $stmt->execute($updateParams);
+        
+        // Обработка изменений баланса в зависимости от статуса
+        if ($oldStatus !== $newStatus) {
+            // Если ставка была won/lost/cancelled и меняется на другой статус - откатываем изменения
+            if (in_array($oldStatus, ['won', 'lost', 'cancelled', 'refunded'])) {
+                if ($oldStatus === 'won' && $bet['win_amount']) {
+                    // Отнимаем выигрыш (возвращаем баланс к состоянию до выигрыша)
+                    $stmt = $db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
+                    $stmt->execute([floatval($bet['win_amount']), $userId]);
+                } elseif ($oldStatus === 'cancelled' || $oldStatus === 'refunded') {
+                    // Отнимаем возврат (возвращаем баланс к состоянию до возврата)
+                    $stmt = $db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
+                    $stmt->execute([$stake, $userId]);
+                }
+            }
+            
+            // Применяем новый статус
+            if ($newStatus === 'won') {
+                // Если win_amount не указан, используем potential_win (полная сумма выигрыша)
+                if ($winAmount === null) {
+                    $winAmount = floatval($bet['potential_win']);
+                }
+                // Добавляем полную сумму выигрыша (stake уже был списан при создании ставки)
+                $stmt = $db->prepare("UPDATE users SET balance = balance + ? WHERE id = ?");
+                $stmt->execute([$winAmount, $userId]);
+            } elseif ($newStatus === 'cancelled' || $newStatus === 'refunded') {
+                // Возвращаем ставку (stake был списан при создании ставки)
+                $stmt = $db->prepare("UPDATE users SET balance = balance + ? WHERE id = ?");
+                $stmt->execute([$stake, $userId]);
+            }
+            // При статусе 'lost' ничего не делаем - ставка уже была списана при создании
+        }
+        
+        $db->commit();
+        sendJSON(['success' => true]);
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        sendJSON(['error' => 'Failed to update bet: ' . $e->getMessage()], 500);
+    }
+}
+
 sendJSON(['error' => 'Invalid request'], 400);

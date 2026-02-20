@@ -161,6 +161,8 @@ function initTabs() {
         loadDeposits();
       } else if (name === 'payouts') {
         loadPayouts();
+      } else if (name === 'bets') {
+        loadBets();
       } else if (name === 'credits') {
         loadCreditRequests();
       } else if (name === 'settings') {
@@ -797,6 +799,306 @@ async function changePassword() {
   }
 }
 
+async function loadBets() {
+  try {
+    const search = document.getElementById("bets-search")?.value || '';
+    const status = document.getElementById("bets-status-filter")?.value || '';
+    let url = `${PHP_API_BASE}/admin.php?action=bets`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+    
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      renderBets(data.bets);
+      updateBetsStats(data.bets);
+    }
+  } catch (err) {
+    console.error('Failed to load bets:', err);
+  }
+}
+
+function renderBets(bets) {
+  const root = document.getElementById("bets-table");
+  if (!root) return;
+
+  const header = `
+    <div class="table-header">
+      <div>Bet ID</div>
+      <div>User</div>
+      <div>Match(es)</div>
+      <div>Outcome</div>
+      <div style="text-align:right">Stake</div>
+      <div style="text-align:right">Potential Win</div>
+      <div>Status</div>
+      <div style="text-align:right">Actions</div>
+    </div>
+  `;
+
+  const rows = bets
+    .map((bet) => {
+      const statusClass = `status-${bet.status}`;
+      
+      // Проверяем, является ли ставка экспрессом
+      const isExpress = bet.bet_details && typeof bet.bet_details === 'string' 
+        ? JSON.parse(bet.bet_details).length > 1
+        : (bet.bet_details && Array.isArray(bet.bet_details) && bet.bet_details.length > 1);
+      
+      let matchText = `${bet.match.home} vs ${bet.match.away}`;
+      let outcomeText = `${bet.outcome.label} @ ${bet.outcome.odd}`;
+      
+      // Если экспресс, показываем количество матчей
+      if (isExpress) {
+        const betDetails = typeof bet.bet_details === 'string' 
+          ? JSON.parse(bet.bet_details) 
+          : bet.bet_details;
+        const matchCount = betDetails ? betDetails.length : 1;
+        matchText = `Express (${matchCount} matches)`;
+        outcomeText = `Total: ${bet.outcome.odd.toFixed(2)}`;
+      }
+      
+      return `
+        <div class="table-row ${isExpress ? 'table-row-express' : ''}" data-bet-id="${bet.bet_id}">
+          <div class="mono" style="font-size: 9px;">${bet.bet_id}${isExpress ? ' <span style="color: #fbbf24;">EX</span>' : ''}</div>
+          <div style="font-size: 10px;">${bet.user_tg || 'N/A'}</div>
+          <div style="font-size: 9px;" title="${matchText}">${matchText}</div>
+          <div style="font-size: 9px;">${outcomeText}</div>
+          <div style="text-align:right; font-weight: 600; font-size: 10px;">${bet.stake.toFixed(2)}</div>
+          <div style="text-align:right; font-weight: 600; color: #22c55e; font-size: 10px;">${bet.potential_win.toFixed(2)}</div>
+          <div><span class="status-badge ${statusClass}" style="font-size: 9px; padding: 2px 6px;">${bet.status}</span></div>
+          <div style="text-align:right; display: flex; gap: 2px; justify-content: flex-end; flex-wrap: wrap;">
+            <button class="small-btn" data-view="${bet.bet_id}" style="font-size: 9px; padding: 4px 8px;">View</button>
+            <button class="small-btn primary" data-edit="${bet.bet_id}" style="font-size: 9px; padding: 4px 8px;">Edit</button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  root.innerHTML = header + rows;
+
+  // Event handlers
+  root.querySelectorAll('[data-view]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const betId = e.target.getAttribute('data-view');
+      showBetDetail(betId);
+    });
+  });
+
+  root.querySelectorAll('[data-edit]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const betId = e.target.getAttribute('data-edit');
+      editBetStatus(betId);
+    });
+  });
+}
+
+function updateBetsStats(bets) {
+  const total = bets.length;
+  const pending = bets.filter(b => b.status === 'pending').length;
+  const active = bets.filter(b => b.status === 'active').length;
+  
+  document.getElementById("bstat-total").textContent = String(total);
+  document.getElementById("bstat-pending").textContent = String(pending);
+  document.getElementById("bstat-active").textContent = String(active);
+}
+
+async function showBetDetail(betId) {
+  try {
+    const response = await fetch(`${PHP_API_BASE}/admin.php?action=bet-detail&bet_id=${encodeURIComponent(betId)}`, {
+      credentials: 'include',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    
+    if (!data.success) {
+      showError('Ошибка', data.error || 'Не удалось загрузить детали ставки');
+      return;
+    }
+    
+    const bet = data.bet;
+    
+    // Проверяем, является ли ставка экспрессом
+    let betDetails = null;
+    let isExpress = false;
+    if (bet.bet_details) {
+      try {
+        betDetails = typeof bet.bet_details === 'string' ? JSON.parse(bet.bet_details) : bet.bet_details;
+        isExpress = Array.isArray(betDetails) && betDetails.length > 1;
+      } catch (e) {
+        console.error('Error parsing bet_details:', e);
+      }
+    }
+    
+    // Формируем HTML для всех матчей из экспресса
+    let matchesHtml = '';
+    if (isExpress && betDetails) {
+      matchesHtml = '<hr><h4 style="color: #fbbf24; margin-top: 16px;">Express Bet - All Matches:</h4>';
+      betDetails.forEach((item, idx) => {
+        matchesHtml += `
+          <div style="background: rgba(251, 191, 36, 0.1); border-left: 3px solid #fbbf24; padding: 10px; margin: 8px 0; border-radius: 6px;">
+            <p style="margin: 4px 0;"><strong>Match ${idx + 1}:</strong> ${item.home || ''} vs ${item.away || ''}</p>
+            <p style="margin: 4px 0; font-size: 12px; color: rgba(232, 232, 234, 0.7);">League: ${item.leagueName || 'N/A'}</p>
+            <p style="margin: 4px 0; font-size: 12px;"><strong>Bet:</strong> ${item.label || item.outcomeKey || ''} @ ${item.odd || ''}</p>
+          </div>
+        `;
+      });
+    }
+    
+    const details = `
+      <div style="text-align: left;">
+        <h3>Bet Details ${isExpress ? '<span style="color: #fbbf24; font-size: 14px;">(EXPRESS)</span>' : ''}</h3>
+        <p><strong>Bet ID:</strong> <span class="mono">${bet.bet_id}</span></p>
+        <p><strong>User:</strong> ${bet.user.telegram_username || bet.user.telegram_id || 'N/A'} (ID: ${bet.user.id})</p>
+        <p><strong>Balance:</strong> <span style="color: #22c55e; font-weight: 600;">$${bet.user.balance.toFixed(2)}</span></p>
+        <p><strong>Total Staked:</strong> $${bet.user.total_staked.toFixed(2)}</p>
+        <hr>
+        ${!isExpress ? `
+        <p><strong>Match:</strong> ${bet.match.home} vs ${bet.match.away}</p>
+        <p><strong>League:</strong> ${bet.match.league || 'N/A'}</p>
+        <p><strong>Match ID:</strong> ${bet.match.id}</p>
+        <hr>
+        ` : ''}
+        <p><strong>Outcome:</strong> ${bet.outcome.label}</p>
+        <p><strong>Type:</strong> ${bet.outcome.type || 'N/A'}</p>
+        ${bet.outcome.value ? `<p><strong>Value:</strong> ${bet.outcome.value}</p>` : ''}
+        <p><strong>Total Odd:</strong> <span style="color: #fbbf24; font-weight: 600;">${bet.outcome.odd}</span></p>
+        ${matchesHtml}
+        <hr>
+        <p><strong>Stake:</strong> <span style="color: #3b82f6; font-weight: 600;">$${bet.stake.toFixed(2)}</span></p>
+        <p><strong>Potential Win:</strong> <span style="color: #22c55e; font-weight: 600;">$${bet.potential_win.toFixed(2)}</span></p>
+        <p><strong>Status:</strong> <span class="status-badge status-${bet.status}">${bet.status}</span></p>
+        ${bet.win_amount ? `<p><strong>Win Amount:</strong> <span style="color: #22c55e; font-weight: 600;">$${bet.win_amount.toFixed(2)}</span></p>` : ''}
+        <p><strong>Created:</strong> ${new Date(bet.created_at).toLocaleString()}</p>
+        ${bet.settled_at ? `<p><strong>Settled:</strong> ${new Date(bet.settled_at).toLocaleString()}</p>` : ''}
+        ${bet.cancelled_at ? `<p><strong>Cancelled:</strong> ${new Date(bet.cancelled_at).toLocaleString()}</p>` : ''}
+        ${bet.admin_notes ? `<p><strong>Admin Notes:</strong> ${bet.admin_notes}</p>` : ''}
+      </div>
+    `;
+    
+    Swal.fire({
+      title: 'Bet Details',
+      html: details,
+      width: '600px',
+      confirmButtonText: 'Close',
+      confirmButtonColor: '#22c55e'
+    });
+  } catch (err) {
+    showError('Ошибка', 'Ошибка загрузки: ' + err.message);
+  }
+}
+
+async function editBetStatus(betId) {
+  try {
+    // Load current bet data
+    const response = await fetch(`${PHP_API_BASE}/admin.php?action=bet-detail&bet_id=${encodeURIComponent(betId)}`, {
+      credentials: 'include',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json();
+    
+    if (!data.success) {
+      showError('Ошибка', data.error || 'Не удалось загрузить ставку');
+      return;
+    }
+    
+    const bet = data.bet;
+    
+    const result = await Swal.fire({
+      title: 'Update Bet Status',
+      html: `
+        <div style="text-align: left;">
+          <label>Status:</label>
+          <select id="swal-status" class="swal2-input">
+            <option value="pending" ${bet.status === 'pending' ? 'selected' : ''}>Pending</option>
+            <option value="active" ${bet.status === 'active' ? 'selected' : ''}>Active</option>
+            <option value="won" ${bet.status === 'won' ? 'selected' : ''}>Won</option>
+            <option value="lost" ${bet.status === 'lost' ? 'selected' : ''}>Lost</option>
+            <option value="cancelled" ${bet.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+            <option value="refunded" ${bet.status === 'refunded' ? 'selected' : ''}>Refunded</option>
+          </select>
+          <label style="margin-top: 10px;">Win Amount (if won):</label>
+          <input type="number" id="swal-win-amount" class="swal2-input" step="0.01" value="${bet.win_amount || bet.potential_win}" />
+          <label style="margin-top: 10px;">Admin Notes:</label>
+          <textarea id="swal-notes" class="swal2-textarea" placeholder="Optional notes...">${bet.admin_notes || ''}</textarea>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Update',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#22c55e',
+      cancelButtonColor: '#ef4444',
+      didOpen: () => {
+        const statusSelect = document.getElementById('swal-status');
+        const winAmountInput = document.getElementById('swal-win-amount');
+        
+        statusSelect.addEventListener('change', () => {
+          if (statusSelect.value === 'won') {
+            winAmountInput.style.display = 'block';
+            winAmountInput.previousElementSibling.style.display = 'block';
+          } else {
+            winAmountInput.style.display = 'none';
+            winAmountInput.previousElementSibling.style.display = 'none';
+          }
+        });
+        
+        if (statusSelect.value !== 'won') {
+          winAmountInput.style.display = 'none';
+          winAmountInput.previousElementSibling.style.display = 'none';
+        }
+      },
+      preConfirm: () => {
+        const status = document.getElementById('swal-status').value;
+        const winAmount = document.getElementById('swal-win-amount').value;
+        const notes = document.getElementById('swal-notes').value;
+        
+        return {
+          status,
+          win_amount: status === 'won' ? parseFloat(winAmount) : null,
+          notes: notes.trim()
+        };
+      }
+    });
+    
+    if (result.isConfirmed) {
+      await updateBetStatus(betId, result.value);
+    }
+  } catch (err) {
+    showError('Ошибка', 'Ошибка: ' + err.message);
+  }
+}
+
+async function updateBetStatus(betId, data) {
+  try {
+    const response = await fetch(`${PHP_API_BASE}/admin.php?action=update-bet-status`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        bet_id: betId,
+        status: data.status,
+        win_amount: data.win_amount,
+        notes: data.notes
+      }),
+      credentials: 'include'
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      showSuccess('Успешно', 'Статус ставки обновлен');
+      loadBets();
+      loadDashboard();
+    } else {
+      showError('Ошибка', result.error || 'Не удалось обновить статус');
+    }
+  } catch (err) {
+    showError('Ошибка', 'Ошибка обновления: ' + err.message);
+  }
+}
+
 function init() {
   if (!isAuthenticated) return;
   
@@ -832,6 +1134,22 @@ function init() {
     payoutsSearch.addEventListener("input", () => {
       clearTimeout(timeout);
       timeout = setTimeout(loadPayouts, 300);
+    });
+  }
+  
+  const betsSearch = document.getElementById("bets-search");
+  if (betsSearch) {
+    let timeout;
+    betsSearch.addEventListener("input", () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(loadBets, 300);
+    });
+  }
+  
+  const betsStatusFilter = document.getElementById("bets-status-filter");
+  if (betsStatusFilter) {
+    betsStatusFilter.addEventListener("change", () => {
+      loadBets();
     });
   }
   
