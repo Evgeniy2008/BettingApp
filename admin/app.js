@@ -2,7 +2,7 @@ const PHP_API_BASE = "/api";
 
 let isAuthenticated = false;
 
-// Функции для показа уведомлений через SweetAlert2
+// Functions for showing notifications via SweetAlert2
 function showAlert(title, text, icon = 'info') {
   return Swal.fire({
     title: title,
@@ -33,20 +33,20 @@ async function showPrompt(title, text, defaultValue = '') {
     inputValue: defaultValue,
     showCancelButton: true,
     confirmButtonText: 'OK',
-    cancelButtonText: 'Отмена',
+    cancelButtonText: 'Cancel',
     confirmButtonColor: '#22c55e',
     cancelButtonColor: '#ef4444'
   });
   return result.isConfirmed ? result.value : null;
 }
 
-// Получение токена для запросов
+// Get token for requests
 function getAuthHeaders() {
   const headers = {
     'Content-Type': 'application/json'
   };
   
-  // Пробуем получить токен из localStorage
+  // Try to get token from localStorage
   const token = localStorage.getItem('admin_token');
   if (token) {
     headers['Authorization'] = 'Bearer ' + token;
@@ -86,17 +86,17 @@ async function login() {
   const password = document.getElementById('login-password').value;
   const errorEl = document.getElementById('login-error');
   
-  if (!password) {
-    errorEl.textContent = 'Введите пароль';
+    if (!password) {
+    errorEl.textContent = 'Enter password';
     errorEl.style.display = 'block';
     return;
   }
   
-  // Показываем загрузку
+  // Show loading
   const btnLogin = document.getElementById('btn-login');
   const originalText = btnLogin.textContent;
   btnLogin.disabled = true;
-  btnLogin.textContent = 'Вход...';
+  btnLogin.textContent = 'Logging in...';
   errorEl.style.display = 'none';
   
   try {
@@ -109,10 +109,10 @@ async function login() {
     
     const data = await response.json();
     
-    console.log('Login response:', data); // Отладка
+    console.log('Login response:', data); // Debug
     
     if (data.success) {
-      // Сохраняем токен в localStorage на случай проблем с cookies
+      // Save token to localStorage in case of cookie issues
       if (data.token) {
         localStorage.setItem('admin_token', data.token);
       }
@@ -124,12 +124,12 @@ async function login() {
       errorEl.style.display = 'none';
       init();
     } else {
-      errorEl.textContent = data.error || 'Неверный пароль';
+      errorEl.textContent = data.error || 'Invalid password';
       errorEl.style.display = 'block';
     }
   } catch (err) {
-    console.error('Login error:', err); // Отладка
-    errorEl.textContent = 'Ошибка подключения: ' + err.message;
+    console.error('Login error:', err); // Debug
+    errorEl.textContent = 'Connection error: ' + err.message;
     errorEl.style.display = 'block';
   } finally {
     btnLogin.disabled = false;
@@ -231,7 +231,7 @@ function renderUsers(users) {
       <div class="table-row" data-user-id="${u.id}">
         <div class="mono">${u.id}</div>
         <div>${u.telegram_username || 'N/A'}</div>
-        <div>${new Date(u.created_at).toLocaleDateString('ru-RU')}</div>
+        <div>${new Date(u.created_at).toLocaleDateString('en-US')}</div>
         <div style="text-align:right">${u.balance.toFixed(2)}</div>
         <div style="text-align:right">${u.total_staked.toFixed(2)}</div>
         <div style="text-align:right"><span class="user-limit">${u.credit_limit.toFixed(2)}</span></div>
@@ -254,14 +254,14 @@ function renderUsers(users) {
       if (!user) return;
 
       const value = await showPrompt(
-        'Изменить кредитный лимит',
-        `Новый кредитный лимит для ${user.telegram_username} (сейчас ${user.credit_limit.toFixed(2)})`,
+        'Change Credit Limit',
+        `New credit limit for ${user.telegram_username} (current: ${user.credit_limit.toFixed(2)})`,
         String(user.credit_limit)
       );
       if (!value) return;
       const num = parseFloat(value);
       if (Number.isNaN(num) || num < 0) {
-        showError('Ошибка', 'Неверное значение');
+        showError('Error', 'Invalid value');
         return;
       }
       
@@ -285,10 +285,10 @@ async function updateUserLimit(userId, creditLimit) {
     if (data.success) {
       loadUsers();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка обновления: ' + err.message);
+    showError('Error', 'Update error: ' + err.message);
   }
 }
 
@@ -397,10 +397,10 @@ async function processDeposit(depositId, action) {
       loadDeposits();
       loadDashboard();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка обработки: ' + err.message);
+    showError('Error', 'Processing error: ' + err.message);
   }
 }
 
@@ -454,7 +454,7 @@ function renderPayouts(payouts) {
         <div>${p.currency}</div>
         <div style="display:flex; align-items:center; gap:6px;">
           <span class="mono" style="font-size: 10px; flex:1;">${p.wallet_address}</span>
-          <button class="small-btn" data-copy-wallet="${p.id}" title="Копировать адрес" style="padding: 4px 8px; font-size: 10px; min-width: auto;">📋</button>
+          <button class="small-btn" data-copy-wallet="${p.id}" title="Copy address" style="padding: 4px 8px; font-size: 10px; min-width: auto;">📋</button>
         </div>
         <div><span class="${badgeClass}">${p.status}</span></div>
         <div style="text-align:right; display:flex; gap:4px; justify-content:flex-end;">
@@ -511,11 +511,11 @@ function copyWalletAddress(address, button) {
   const cleanAddress = String(address || '').trim();
   
   if (!cleanAddress) {
-    showError('Ошибка', 'Адрес кошелька недоступен');
+    showError('Error', 'Wallet address unavailable');
     return;
   }
   
-  // Пробуем использовать современный API
+  // Try to use modern API
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(cleanAddress).then(() => {
       const originalText = button.textContent;
@@ -525,7 +525,7 @@ function copyWalletAddress(address, button) {
         button.textContent = originalText;
         button.style.color = '';
       }, 2000);
-      showSuccess('Скопировано', 'Адрес кошелька скопирован в буфер обмена');
+      showSuccess('Copied', 'Wallet address copied to clipboard');
     }).catch((err) => {
       console.error('Clipboard API failed:', err);
       fallbackCopyWallet(cleanAddress, button);
@@ -565,13 +565,13 @@ function fallbackCopyWallet(text, button) {
         button.textContent = originalText;
         button.style.color = '';
       }, 2000);
-      showSuccess('Скопировано', 'Адрес кошелька скопирован в буфер обмена');
+      showSuccess('Copied', 'Wallet address copied to clipboard');
     } else {
-      showError('Ошибка', 'Не удалось скопировать адрес. Скопируйте вручную: ' + text);
+      showError('Error', 'Failed to copy address. Copy manually: ' + text);
     }
   } catch (err) {
     console.error('Fallback copy failed:', err);
-    showError('Ошибка', 'Не удалось скопировать адрес. Скопируйте вручную: ' + text);
+    showError('Error', 'Failed to copy address. Copy manually: ' + text);
   }
 }
 
@@ -591,10 +591,10 @@ async function processPayout(payoutId, action) {
       loadPayouts();
       loadDashboard();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка обработки: ' + err.message);
+    showError('Error', 'Processing error: ' + err.message);
   }
 }
 
@@ -702,10 +702,10 @@ async function processCreditRequest(requestId, action) {
       loadUsers();
       loadDashboard();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка обработки: ' + err.message);
+    showError('Error', 'Processing error: ' + err.message);
   }
 }
 
@@ -729,14 +729,14 @@ async function saveWallets() {
   try {
     const usdtInput = document.getElementById('wallet-usdt');
     if (!usdtInput) {
-      showError('Ошибка', 'Поле кошелька не найдено');
+      showError('Error', 'Wallet field not found');
       return;
     }
     
     const usdt = usdtInput.value.trim();
     
     if (!usdt) {
-      showWarning('Ошибка', 'Введите адрес кошелька USDT');
+      showWarning('Error', 'Enter USDT wallet address');
       return;
     }
     
@@ -751,14 +751,14 @@ async function saveWallets() {
     
     const data = await response.json();
     if (data.success) {
-      showSuccess('Успешно', 'Кошелек USDT сохранен');
-      // Перезагружаем настройки для подтверждения
+      showSuccess('Success', 'USDT wallet saved');
+      // Reload settings for confirmation
       loadSettings();
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка сохранения: ' + err.message);
+    showError('Error', 'Save error: ' + err.message);
   }
 }
 
@@ -767,12 +767,12 @@ async function changePassword() {
   const newPassword = document.getElementById('new-password').value;
   
   if (!oldPassword || !newPassword) {
-    showWarning('Ошибка', 'Заполните все поля');
+    showWarning('Error', 'Fill in all fields');
     return;
   }
   
   if (newPassword.length < 1) {
-    showWarning('Ошибка', 'Пароль не может быть пустым');
+    showWarning('Error', 'Password cannot be empty');
     return;
   }
   
@@ -788,14 +788,14 @@ async function changePassword() {
     
     const data = await response.json();
     if (data.success) {
-      showSuccess('Успешно', 'Пароль изменен');
+      showSuccess('Success', 'Password changed');
       document.getElementById('old-password').value = '';
       document.getElementById('new-password').value = '';
     } else {
-      showError('Ошибка', data.error || 'Неизвестная ошибка');
+      showError('Error', data.error || 'Unknown error');
     }
   } catch (err) {
-    alert('Ошибка изменения пароля: ' + err.message);
+    alert('Password change error: ' + err.message);
   }
 }
 
@@ -843,7 +843,7 @@ function renderBets(bets) {
     .map((bet) => {
       const statusClass = `status-${bet.status}`;
       
-      // Проверяем, является ли ставка экспрессом
+      // Check if bet is express
       const isExpress = bet.bet_details && typeof bet.bet_details === 'string' 
         ? JSON.parse(bet.bet_details).length > 1
         : (bet.bet_details && Array.isArray(bet.bet_details) && bet.bet_details.length > 1);
@@ -851,7 +851,7 @@ function renderBets(bets) {
       let matchText = `${bet.match.home} vs ${bet.match.away}`;
       let outcomeText = `${bet.outcome.label} @ ${bet.outcome.odd}`;
       
-      // Если экспресс, показываем количество матчей
+      // If express, show number of matches
       if (isExpress) {
         const betDetails = typeof bet.bet_details === 'string' 
           ? JSON.parse(bet.bet_details) 
@@ -916,13 +916,13 @@ async function showBetDetail(betId) {
     const data = await response.json();
     
     if (!data.success) {
-      showError('Ошибка', data.error || 'Не удалось загрузить детали ставки');
+      showError('Error', data.error || 'Failed to load bet details');
       return;
     }
     
     const bet = data.bet;
     
-    // Проверяем, является ли ставка экспрессом
+    // Check if bet is express
     let betDetails = null;
     let isExpress = false;
     if (bet.bet_details) {
@@ -934,7 +934,7 @@ async function showBetDetail(betId) {
       }
     }
     
-    // Формируем HTML для всех матчей из экспресса
+    // Build HTML for all matches from express
     let matchesHtml = '';
     if (isExpress && betDetails) {
       matchesHtml = '<hr><h4 style="color: #fbbf24; margin-top: 16px;">Express Bet - All Matches:</h4>';
@@ -988,7 +988,7 @@ async function showBetDetail(betId) {
       confirmButtonColor: '#22c55e'
     });
   } catch (err) {
-    showError('Ошибка', 'Ошибка загрузки: ' + err.message);
+    showError('Error', 'Loading error: ' + err.message);
   }
 }
 
@@ -1002,7 +1002,7 @@ async function editBetStatus(betId) {
     const data = await response.json();
     
     if (!data.success) {
-      showError('Ошибка', data.error || 'Не удалось загрузить ставку');
+      showError('Error', data.error || 'Failed to load bet');
       return;
     }
     
@@ -1068,7 +1068,7 @@ async function editBetStatus(betId) {
       await updateBetStatus(betId, result.value);
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка: ' + err.message);
+    showError('Error', 'Error: ' + err.message);
   }
 }
 
@@ -1088,14 +1088,14 @@ async function updateBetStatus(betId, data) {
     
     const result = await response.json();
     if (result.success) {
-      showSuccess('Успешно', 'Статус ставки обновлен');
+      showSuccess('Success', 'Bet status updated');
       loadBets();
       loadDashboard();
     } else {
-      showError('Ошибка', result.error || 'Не удалось обновить статус');
+      showError('Error', result.error || 'Failed to update status');
     }
   } catch (err) {
-    showError('Ошибка', 'Ошибка обновления: ' + err.message);
+    showError('Error', 'Update error: ' + err.message);
   }
 }
 

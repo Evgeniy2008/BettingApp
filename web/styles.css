@@ -356,8 +356,10 @@ html {
 }
 
 .league-logo {
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  max-width: 30px;
+  height: auto;
+  max-height: 30px;
   object-fit: contain;
   border-radius: 4px;
   margin-right: 6px;
@@ -791,8 +793,10 @@ html {
 }
 
 .team-logo {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  max-width: 30px;
+  height: auto;
+  max-height: 30px;
   object-fit: contain;
   border-radius: 4px;
 }
@@ -1180,8 +1184,10 @@ html {
 }
 
 .modal-header h2 .team-logo {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  max-width: 30px;
+  height: auto;
+  max-height: 30px;
   object-fit: contain;
   border-radius: 4px;
 }
@@ -1729,7 +1735,8 @@ html {
     bottom: 0;
     left: 0;
     right: 0;
-    max-height: 85vh;
+    max-height: 90vh;
+    height: 90vh;
     z-index: 1001; /* Выше overlay */
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
@@ -1745,10 +1752,12 @@ html {
   }
   
   .betslip.betslip-open {
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     transform: translateY(0);
     background: #16181f; /* Убеждаемся, что фон яркий */
+    height: 90vh;
+    max-height: 90vh;
   }
   
   .betslip-overlay {
@@ -2137,8 +2146,10 @@ html {
   }
   
   .modal-header h2 .team-logo {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    max-width: 30px;
+    height: auto;
+    max-height: 30px;
   }
 
   .modal-close {
@@ -2360,8 +2371,10 @@ html {
   }
   
   .team-logo {
-    width: 18px;
-    height: 18px;
+    width: 30px;
+    max-width: 30px;
+    height: auto;
+    max-height: 30px;
   }
 
   .match-score {
@@ -2508,8 +2521,10 @@ html {
   }
   
   .team-logo {
-    width: 18px;
-    height: 18px;
+    width: 30px;
+    max-width: 30px;
+    height: auto;
+    max-height: 30px;
   }
   
   .match-league {
@@ -3010,6 +3025,22 @@ html {
 
   .bottom-nav-badge:empty {
     display: none;
+  }
+
+  /* Badge counter inside SVG for betslip */
+  .bottom-nav-item svg circle[fill="currentColor"] {
+    fill: #dc2626;
+  }
+
+  .bottom-nav-item svg text {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .bottom-nav-item.active svg circle[fill="currentColor"] {
+    fill: #dc2626;
   }
 
   /* Hide floating betslip button when bottom nav is visible */

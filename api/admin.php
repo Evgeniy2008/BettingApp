@@ -1,7 +1,7 @@
 <?php
 require_once 'config.php';
 
-// Вход в админку
+// Admin login
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'login') {
     $data = getRequestData();
     $password = $data['password'] ?? '';
@@ -16,26 +16,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     $result = $stmt->fetch();
     
     if (!$result) {
-        // Если пароля нет в БД, создаем его (простой пароль без шифрования)
+        // If password doesn't exist in DB, create it (simple password without encryption)
         $defaultPassword = 'admin123';
         $stmt = $db->prepare("INSERT INTO admin_settings (setting_key, setting_value) VALUES ('admin_password', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
         $stmt->execute([$defaultPassword, $defaultPassword]);
         $result = ['setting_value' => $defaultPassword];
     }
     
-    // Простое сравнение паролей без шифрования
+    // Simple password comparison without encryption
     if ($password !== $result['setting_value']) {
         sendJSON(['error' => 'Invalid password'], 401);
     }
     
-    // Создаем сессию
+    // Create session
     $token = generateToken(32);
     $expiresAt = date('Y-m-d H:i:s', time() + ADMIN_SESSION_LIFETIME);
     
     $stmt = $db->prepare("INSERT INTO admin_sessions (token, expires_at) VALUES (?, ?)");
     $stmt->execute([$token, $expiresAt]);
     
-    // Устанавливаем cookie с правильными параметрами
+    // Set cookie with correct parameters
     $cookieSet = setcookie('admin_token', $token, [
         'expires' => time() + ADMIN_SESSION_LIFETIME,
         'path' => '/',
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         'samesite' => 'Lax'
     ]);
     
-    // Также отправляем токен в ответе на случай проблем с cookies
+    // Also send token in response in case of cookie issues
     sendJSON([
         'success' => true, 
         'token' => $token,
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     ]);
 }
 
-// Изменение пароля
+// Change password
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'change-password') {
     checkAdminAuth();
     $data = getRequestData();
@@ -74,19 +74,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     $stmt->execute();
     $result = $stmt->fetch();
     
-    // Простое сравнение паролей без шифрования
+    // Simple password comparison without encryption
     if (!$result || $oldPassword !== $result['setting_value']) {
         sendJSON(['error' => 'Invalid old password'], 401);
     }
     
-    // Сохраняем новый пароль без шифрования
+    // Save new password without encryption
     $stmt = $db->prepare("UPDATE admin_settings SET setting_value = ? WHERE setting_key = 'admin_password'");
     $stmt->execute([$newPassword]);
     
     sendJSON(['success' => true]);
 }
 
-// Получение статистики
+// Get statistics
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'stats') {
     checkAdminAuth();
     $db = getDB();
@@ -114,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     ]);
 }
 
-// Получение пользователей
+// Get users
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'users') {
     checkAdminAuth();
     $db = getDB();
@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     ]);
 }
 
-// Обновление кредитного лимита пользователя
+// Update user credit limit
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'update-limit') {
     checkAdminAuth();
     $data = getRequestData();
@@ -169,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     sendJSON(['success' => true]);
 }
 
-// Получение заявок на пополнение
+// Get deposit requests
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'deposits') {
     checkAdminAuth();
     $db = getDB();
@@ -208,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     ]);
 }
 
-// Подтверждение/отклонение пополнения
+// Approve/reject deposit
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'process-deposit') {
     checkAdminAuth();
     $data = getRequestData();
@@ -223,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     
     $db = getDB();
     
-    // Получаем заявку
+    // Get request
     $stmt = $db->prepare("SELECT * FROM deposits WHERE id = ? AND status = 'pending'");
     $stmt->execute([$depositId]);
     $deposit = $stmt->fetch();
@@ -234,34 +234,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     
     $status = $action === 'approve' ? 'approved' : 'rejected';
     
-    // Обновляем статус
+    // Update status
     $stmt = $db->prepare("UPDATE deposits SET status = ?, admin_notes = ? WHERE id = ?");
     $stmt->execute([$status, $notes, $depositId]);
     
-    // Если подтверждено, добавляем баланс и погашаем кредит
+    // If approved, add balance and pay off credit
     if ($action === 'approve') {
-        // Получаем текущий долг пользователя
+        // Get user's current debt
         $stmt = $db->prepare("SELECT current_debt FROM users WHERE id = ?");
         $stmt->execute([$deposit['user_id']]);
         $userData = $stmt->fetch();
         $currentDebt = floatval($userData['current_debt'] ?? 0);
         $depositAmount = floatval($deposit['amount']);
         
-        // Если есть долг, погашаем его
+        // If there's debt, pay it off
         if ($currentDebt > 0) {
             if ($depositAmount >= $currentDebt) {
-                // Полностью погашаем долг, остаток идет на баланс
+                // Fully pay off debt, remainder goes to balance
                 $remainingAmount = $depositAmount - $currentDebt;
                 $stmt = $db->prepare("UPDATE users SET balance = balance + ?, current_debt = 0 WHERE id = ?");
                 $stmt->execute([$remainingAmount, $deposit['user_id']]);
             } else {
-                // Частично погашаем долг
+                // Partially pay off debt
                 $newDebt = $currentDebt - $depositAmount;
                 $stmt = $db->prepare("UPDATE users SET current_debt = ? WHERE id = ?");
                 $stmt->execute([$newDebt, $deposit['user_id']]);
             }
         } else {
-            // Нет долга, просто добавляем на баланс
+            // No debt, just add to balance
             $stmt = $db->prepare("UPDATE users SET balance = balance + ? WHERE id = ?");
             $stmt->execute([$depositAmount, $deposit['user_id']]);
         }
@@ -270,7 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     sendJSON(['success' => true]);
 }
 
-// Получение заявок на вывод
+// Get withdrawal requests
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'withdrawals') {
     checkAdminAuth();
     $db = getDB();
@@ -309,7 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     ]);
 }
 
-// Подтверждение/отклонение вывода
+// Approve/reject withdrawal
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'process-withdrawal') {
     checkAdminAuth();
     $data = getRequestData();
@@ -324,7 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     
     $db = getDB();
     
-    // Получаем заявку
+    // Get request
     $stmt = $db->prepare("SELECT * FROM withdrawals WHERE id = ? AND status = 'pending'");
     $stmt->execute([$withdrawalId]);
     $withdrawal = $stmt->fetch();
@@ -337,15 +337,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     
     $db->beginTransaction();
     try {
-        // Обновляем статус
+        // Update status
         $stmt = $db->prepare("UPDATE withdrawals SET status = ?, admin_notes = ? WHERE id = ?");
         $stmt->execute([$status, $notes, $withdrawalId]);
         
         if ($action === 'approve') {
-            // При подтверждении списываем сумму с баланса пользователя
+            // On approval, deduct amount from user balance
             $withdrawalAmount = floatval($withdrawal['amount']);
             
-            // Проверяем баланс пользователя
+            // Check user balance
             $stmt = $db->prepare("SELECT balance FROM users WHERE id = ?");
             $stmt->execute([$withdrawal['user_id']]);
             $userData = $stmt->fetch();
@@ -362,11 +362,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
                 return;
             }
             
-            // Списываем сумму с баланса
+            // Deduct amount from balance
             $stmt = $db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
             $stmt->execute([$withdrawalAmount, $withdrawal['user_id']]);
         }
-        // Если отклонено, баланс не трогаем (он не был списан при создании заявки)
+        // If rejected, don't touch balance (it wasn't deducted when request was created)
         
         $db->commit();
         sendJSON(['success' => true]);
@@ -376,7 +376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     }
 }
 
-// Получение/обновление кошельков
+// Get/update wallets
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'wallets') {
     checkAdminAuth();
     $db = getDB();
@@ -399,11 +399,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     
     if (isset($data['usdt'])) {
         $usdtValue = trim($data['usdt']);
-        // Используем INSERT ... ON DUPLICATE KEY UPDATE для гарантии обновления
+        // Use INSERT ... ON DUPLICATE KEY UPDATE to ensure update
         $stmt = $db->prepare("INSERT INTO admin_settings (setting_key, setting_value) VALUES ('deposit_wallet_usdt', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
         $stmt->execute([$usdtValue, $usdtValue]);
         
-        // Проверяем, что обновление прошло успешно
+        // Check that update was successful
         $stmt = $db->prepare("SELECT setting_value FROM admin_settings WHERE setting_key = 'deposit_wallet_usdt'");
         $stmt->execute();
         $result = $stmt->fetch();
@@ -417,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     sendJSON(['success' => true]);
 }
 
-// Получение запросов на увеличение кредита
+// Get credit increase requests
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'credit-requests') {
     checkAdminAuth();
     $db = getDB();
@@ -458,7 +458,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     ]);
 }
 
-// Подтверждение/отклонение запроса на кредит
+// Approve/reject credit request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'process-credit-request') {
     checkAdminAuth();
     $data = getRequestData();
@@ -473,7 +473,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     
     $db = getDB();
     
-    // Получаем запрос
+    // Get request
     $stmt = $db->prepare("SELECT * FROM credit_requests WHERE id = ? AND status = 'pending'");
     $stmt->execute([$requestId]);
     $request = $stmt->fetch();
@@ -484,11 +484,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     
     $status = $action === 'approve' ? 'approved' : 'rejected';
     
-    // Обновляем статус
+    // Update status
     $stmt = $db->prepare("UPDATE credit_requests SET status = ?, admin_notes = ? WHERE id = ?");
     $stmt->execute([$status, $notes, $requestId]);
     
-    // Если подтверждено, обновляем кредитный лимит пользователя
+    // If approved, update user credit limit
     if ($action === 'approve') {
         $stmt = $db->prepare("UPDATE users SET credit_limit = ? WHERE id = ?");
         $stmt->execute([$request['requested_limit'], $request['user_id']]);
@@ -497,9 +497,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     sendJSON(['success' => true]);
 }
 
-// ========== УПРАВЛЕНИЕ СТАВКАМИ ==========
+// ========== BET MANAGEMENT ==========
 
-// Получение списка ставок
+// Get list of bets
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'bets') {
     checkAdminAuth();
     $db = getDB();
@@ -570,7 +570,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     ]);
 }
 
-// Получение детальной информации о ставке
+// Get detailed bet information
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'bet-detail') {
     checkAdminAuth();
     $betId = $_GET['bet_id'] ?? '';
@@ -631,7 +631,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['act
     ]);
 }
 
-// Изменение статуса ставки
+// Change bet status
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'update-bet-status') {
     checkAdminAuth();
     $data = getRequestData();
@@ -654,7 +654,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
     try {
         $db->beginTransaction();
         
-        // Получаем текущую ставку
+        // Get current bet
         $stmt = $db->prepare("SELECT * FROM bets WHERE bet_id = ?");
         $stmt->execute([$betId]);
         $bet = $stmt->fetch();
@@ -668,12 +668,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         $userId = $bet['user_id'];
         $stake = floatval($bet['stake']);
         
-        // Обновляем статус ставки
+        // Update bet status
         $updateFields = ['status = ?'];
         $updateParams = [$newStatus];
         
         if ($newStatus === 'won') {
-            // Если win_amount не указан, используем potential_win (полная сумма выигрыша)
+            // If win_amount is not specified, use potential_win (full win amount)
             if ($winAmount === null) {
                 $winAmount = floatval($bet['potential_win']);
             }
@@ -695,36 +695,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['ac
         $stmt = $db->prepare("UPDATE bets SET " . implode(', ', $updateFields) . " WHERE bet_id = ?");
         $stmt->execute($updateParams);
         
-        // Обработка изменений баланса в зависимости от статуса
+        // Handle balance changes based on status
         if ($oldStatus !== $newStatus) {
-            // Если ставка была won/lost/cancelled и меняется на другой статус - откатываем изменения
+            // If bet was won/lost/cancelled and is changing to another status - rollback changes
             if (in_array($oldStatus, ['won', 'lost', 'cancelled', 'refunded'])) {
                 if ($oldStatus === 'won' && $bet['win_amount']) {
-                    // Отнимаем выигрыш (возвращаем баланс к состоянию до выигрыша)
+                    // Deduct winnings (return balance to state before win)
                     $stmt = $db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
                     $stmt->execute([floatval($bet['win_amount']), $userId]);
                 } elseif ($oldStatus === 'cancelled' || $oldStatus === 'refunded') {
-                    // Отнимаем возврат (возвращаем баланс к состоянию до возврата)
+                    // Deduct refund (return balance to state before refund)
                     $stmt = $db->prepare("UPDATE users SET balance = balance - ? WHERE id = ?");
                     $stmt->execute([$stake, $userId]);
                 }
             }
             
-            // Применяем новый статус
+            // Apply new status
             if ($newStatus === 'won') {
-                // Если win_amount не указан, используем potential_win (полная сумма выигрыша)
+                // If win_amount is not specified, use potential_win (full win amount)
                 if ($winAmount === null) {
                     $winAmount = floatval($bet['potential_win']);
                 }
-                // Добавляем полную сумму выигрыша (stake уже был списан при создании ставки)
+                // Add full win amount (stake was already deducted when bet was created)
                 $stmt = $db->prepare("UPDATE users SET balance = balance + ? WHERE id = ?");
                 $stmt->execute([$winAmount, $userId]);
             } elseif ($newStatus === 'cancelled' || $newStatus === 'refunded') {
-                // Возвращаем ставку (stake был списан при создании ставки)
+                // Refund stake (stake was deducted when bet was created)
                 $stmt = $db->prepare("UPDATE users SET balance = balance + ? WHERE id = ?");
                 $stmt->execute([$stake, $userId]);
             }
-            // При статусе 'lost' ничего не делаем - ставка уже была списана при создании
+            // For 'lost' status do nothing - stake was already deducted when bet was created
         }
         
         $db->commit();

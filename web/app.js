@@ -540,22 +540,28 @@ function openBetslipMobile() {
   const betslip = document.querySelector('.betslip');
   const overlay = document.getElementById('betslip-overlay');
   const closeBtn = document.getElementById("betslip-close-btn");
-  if (betslip) {
-    betslip.classList.add('betslip-open');
-    if (overlay) {
-      overlay.style.display = 'block';
-      setTimeout(() => overlay.classList.add('active'), 10);
-    }
-    document.body.style.overflow = 'hidden';
-    if (closeBtn) closeBtn.style.display = 'block';
-    
-    // Убеждаемся, что betslip может получать клики и имеет яркий фон
-    betslip.style.pointerEvents = 'all';
-    betslip.style.background = '#16181f';
-    
-    // Update bottom nav active state
-    updateBottomNavActive();
+  
+  if (!betslip) {
+    console.warn('[Betslip] BetSlip element not found when trying to open');
+    return;
   }
+  
+  betslip.classList.add('betslip-open');
+  if (overlay) {
+    overlay.style.display = 'block';
+    setTimeout(() => overlay.classList.add('active'), 10);
+  }
+  document.body.style.overflow = 'hidden';
+  if (closeBtn) closeBtn.style.display = 'block';
+  
+  // Убеждаемся, что betslip может получать клики и имеет яркий фон
+  betslip.style.pointerEvents = 'all';
+  betslip.style.background = '#16181f';
+  betslip.style.display = 'flex';
+  betslip.style.flexDirection = 'column';
+  
+  // Update bottom nav active state
+  updateBottomNavActive();
 }
 
 // Close betslip on mobile
@@ -579,8 +585,14 @@ function closeBetslipMobile() {
 
 // Toggle betslip visibility on mobile
 function toggleBetslipMobile() {
+  if (!isMobile()) return;
   const betslip = document.querySelector('.betslip');
-  if (betslip && betslip.classList.contains('betslip-open')) {
+  if (!betslip) {
+    console.warn('[Betslip] BetSlip element not found');
+    return;
+  }
+  
+  if (betslip.classList.contains('betslip-open')) {
     closeBetslipMobile();
   } else {
     openBetslipMobile();
@@ -609,11 +621,18 @@ function renderSlip() {
   
   // Update bottom nav betslip count
   if (bottomNavBetslipCount) {
-    bottomNavBetslipCount.textContent = slip.length.toString();
-    if (slip.length === 0) {
-      bottomNavBetslipCount.style.display = 'none';
-    } else {
-      bottomNavBetslipCount.style.display = 'flex';
+    const count = slip.length;
+    bottomNavBetslipCount.textContent = count.toString();
+    // Find the circle element
+    const circle = document.getElementById('bottom-nav-betslip-circle');
+    if (circle) {
+      if (count === 0) {
+        circle.style.display = 'none';
+        bottomNavBetslipCount.style.visibility = 'hidden';
+      } else {
+        circle.style.display = 'block';
+        bottomNavBetslipCount.style.visibility = 'visible';
+      }
     }
   }
 
@@ -835,8 +854,8 @@ function switchTab(tabName) {
     checkAndSettleBets();
   }
   
-  // Close betslip on mobile when switching tabs (except when opening betslip)
-  if (isMobile() && tabName !== 'betslip') {
+  // Close betslip on mobile when switching tabs (except when opening betslip or if betslip is being toggled)
+  if (isMobile() && tabName !== 'betslip' && tabName !== 'sportsbook') {
     closeBetslipMobile();
   }
 }
@@ -845,7 +864,7 @@ function setupBottomNav() {
   const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
   
   bottomNavItems.forEach((item) => {
-    item.addEventListener("click", () => {
+    item.addEventListener("click", (e) => {
       const navName = item.getAttribute("data-nav");
       if (!navName) return;
       
@@ -870,14 +889,17 @@ function setupBottomNav() {
       } else if (navName === "betslip") {
         // Toggle betslip on mobile
         if (isMobile()) {
+          // Prevent default tab switching behavior
+          e.preventDefault();
+          e.stopPropagation();
+          
+          // Don't switch tabs, just toggle betslip
           toggleBetslipMobile();
-          // Mark as active when betslip is open
-          const betslip = document.querySelector('.betslip');
-          if (betslip && betslip.classList.contains('betslip-open')) {
-            item.classList.add("active");
-          } else {
-            item.classList.remove("active");
-          }
+          
+          // Update active state after a short delay to ensure betslip state is updated
+          setTimeout(() => {
+            updateBottomNavActive();
+          }, 150);
         } else {
           // On desktop, just switch to sportsbook (betslip is always visible)
           switchTab("sportsbook");
@@ -917,6 +939,8 @@ function updateBottomNavActive() {
       const betslip = document.querySelector('.betslip');
       if (betslip && betslip.classList.contains('betslip-open')) {
         item.classList.add("active");
+      } else {
+        item.classList.remove("active");
       }
     }
   });
@@ -1739,21 +1763,19 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
         renderMatches();
         renderSlip();
         
+        // Close modal and open betslip after selecting coefficient
+        closeModal();
+        
         // Open betslip on mobile when adding bet (after a short delay to allow UI to update)
         if (isMobile()) {
           setTimeout(() => openBetslipMobile(), 150);
-        }
-        
-        // Update active states in modal without re-rendering
-        modalBody.querySelectorAll('.detail-outcome-btn').forEach(btn => {
-          const btnOutcomeId = btn.getAttribute('data-outcome-id');
-          const isActive = state.slip.some(s => s.outcomeId === btnOutcomeId);
-          if (isActive) {
-            btn.classList.add('detail-outcome-btn-active');
-          } else {
-            btn.classList.remove('detail-outcome-btn-active');
+        } else {
+          // On desktop, ensure betslip is visible (it should already be visible in sidebar)
+          // Switch to sportsbook tab to show betslip
+          if (state.activeTab !== 'sportsbook') {
+            switchTab('sportsbook');
           }
-        });
+        }
       });
     });
   } catch (err) {
