@@ -26,12 +26,44 @@ if ($method === 'POST' && empty($betId)) {
     
     $stake = floatval($data['stake']);
     
-    // Проверка баланса
-    if ($user['balance'] < $stake) {
-        sendJSON(['error' => 'Insufficient balance'], 400);
+    $db = getDB();
+    
+    // Получаем актуальные данные пользователя (баланс, кредитный лимит, долг)
+    $userStmt = $db->prepare("SELECT balance, credit_limit, current_debt FROM users WHERE id = ?");
+    $userStmt->execute([$user['id']]);
+    $userData = $userStmt->fetch();
+    
+    if (!$userData) {
+        sendJSON(['error' => 'User not found'], 404);
     }
     
-    $db = getDB();
+    $balance = floatval($userData['balance']);
+    $creditLimit = floatval($userData['credit_limit'] ?? 0);
+    $currentDebt = floatval($userData['current_debt'] ?? 0);
+    
+    // Вычисляем доступные средства (баланс + доступный кредит)
+    $availableCredit = max(0, $creditLimit - $currentDebt); // Доступный кредит = лимит - текущий долг
+    $totalAvailable = $balance + $availableCredit;
+    
+    // Проверка достаточности средств
+    if ($totalAvailable < $stake) {
+        sendJSON([
+            'error' => 'Insufficient funds',
+            'balance' => $balance,
+            'available_credit' => $availableCredit,
+            'total_available' => $totalAvailable,
+            'required' => $stake
+        ], 400);
+    }
+    
+    // Вычисляем, сколько списать с баланса и сколько с кредита
+    $amountFromBalance = min($balance, $stake); // Списываем с баланса сколько есть, но не больше ставки
+    $amountFromCredit = $stake - $amountFromBalance; // Остаток списываем с кредита
+    
+    // Вычисляем новые значения
+    $newBalance = $balance - $amountFromBalance;
+    $newCurrentDebt = $currentDebt + $amountFromCredit; // Увеличиваем долг на сумму, взятую в кредит
+    // credit_limit не меняется, меняется только current_debt
     
     try {
         $db->beginTransaction();
@@ -188,14 +220,15 @@ if ($method === 'POST' && empty($betId)) {
             ]
         ];
         
-        // Обновляем баланс пользователя
-        $newBalance = $user['balance'] - $stake;
+        // Обновляем баланс пользователя, кредитный долг и общую сумму ставок
         $updateStmt = $db->prepare("
             UPDATE users 
-            SET balance = ?, total_staked = total_staked + ?
+            SET balance = ?, 
+                current_debt = ?,
+                total_staked = total_staked + ?
             WHERE id = ?
         ");
-        $updateStmt->execute([$newBalance, $stake, $user['id']]);
+        $updateStmt->execute([$newBalance, $newCurrentDebt, $stake, $user['id']]);
         
         $db->commit();
         
@@ -205,7 +238,10 @@ if ($method === 'POST' && empty($betId)) {
             'stake' => $stake,
             'totalOdds' => $totalOdds,
             'potentialWin' => $stake * $totalOdds,
-            'newBalance' => $newBalance
+            'newBalance' => $newBalance,
+            'amountFromBalance' => $amountFromBalance,
+            'amountFromCredit' => $amountFromCredit,
+            'newCurrentDebt' => $newCurrentDebt
         ]);
         
     } catch (Exception $e) {
