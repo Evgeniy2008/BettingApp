@@ -111,8 +111,38 @@ html {
   height: 20px;
 }
 
+.match-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
 .match-actions-mobile {
   display: none;
+}
+
+.go-to-all-bets-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f4f4f5;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.go-to-all-bets-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.go-to-all-bets-btn:active {
+  transform: scale(0.98);
 }
 
 .logo {
@@ -274,6 +304,7 @@ html {
   overflow-x: hidden;
   margin-top: 4px;
   min-height: 0;
+  max-height: 400px; /* Limit height for desktop */
 }
 
 .leagues-scroll::-webkit-scrollbar {
@@ -322,6 +353,14 @@ html {
 
 .league-flag {
   font-size: 15px;
+}
+
+.league-logo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
+  margin-right: 6px;
 }
 
 .league-name {
@@ -527,6 +566,8 @@ html {
   background: #14151d;
   padding: 10px;
   display: flex;
+  align-items: center;
+  gap: 12px;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
@@ -743,6 +784,21 @@ html {
   font-weight: 600;
   line-height: 1.4;
   word-break: break-word;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.team-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.team-name {
+  display: inline-block;
 }
 
 .match-time {
@@ -1117,6 +1173,17 @@ html {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal-header h2 .team-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .modal-close {
@@ -1171,7 +1238,42 @@ html {
 
 .detail-outcomes {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+}
+
+.detail-bookmaker-group {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 10, 12, 0.95);
+  padding: 16px;
+}
+
+.detail-bookmaker-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f4f4f5;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.detail-bet-group {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 15, 18, 0.9);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.detail-bet-group:last-child {
+  margin-bottom: 0;
+}
+
+.detail-bet-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(232, 232, 234, 0.8);
+  margin-bottom: 8px;
 }
 
 .detail-outcome-group {
@@ -2031,6 +2133,12 @@ html {
 
   .modal-header h2 {
     font-size: 16px;
+    gap: 6px;
+  }
+  
+  .modal-header h2 .team-logo {
+    width: 24px;
+    height: 24px;
   }
 
   .modal-close {
@@ -2248,6 +2356,12 @@ html {
     font-size: 12px;
     line-height: 1.3;
     margin-bottom: 3px;
+    gap: 3px;
+  }
+  
+  .team-logo {
+    width: 18px;
+    height: 18px;
   }
 
   .match-score {
@@ -2390,6 +2504,12 @@ html {
   
   .match-title {
     font-size: 12px;
+    gap: 3px;
+  }
+  
+  .team-logo {
+    width: 18px;
+    height: 18px;
   }
   
   .match-league {

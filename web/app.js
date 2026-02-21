@@ -58,20 +58,6 @@ function showMatchesSkeleton() {
   
   root.innerHTML = `
     <div class="matches-table">
-      <div class="matches-header">
-        <div class="matches-header-info">Match</div>
-        <div class="matches-header-odds">
-          <span>1</span>
-          <span>X</span>
-          <span>2</span>
-          <span>O</span>
-          <span>Total</span>
-          <span>U</span>
-          <span>1</span>
-          <span>Handicap</span>
-          <span>2</span>
-        </div>
-      </div>
       <div class="matches-container">
         ${skeletonRows}
       </div>
@@ -79,7 +65,7 @@ function showMatchesSkeleton() {
   `;
 }
 
-// Load matches from live site or snapshot
+// Load matches from PHP API (API Sports)
 async function loadMatches(forceRefresh = false) {
   // Show skeleton while loading
   showMatchesSkeleton();
@@ -88,98 +74,37 @@ async function loadMatches(forceRefresh = false) {
   console.log(`[App] Loading matches at ${new Date().toISOString()}${forceRefresh ? ' (FORCE REFRESH - NO CACHE)' : ''}`);
   
   try {
-    // Try live first (or snapshot if forced)
-    let res;
-    let data;
+    // Use PHP API to get matches from API Sports
+    // Single request for faster loading - get today's matches (includes live)
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    const cacheBuster = forceRefresh ? `&_t=${timestamp}&_r=${random}` : '';
     
-    // Use snapshot if forced, otherwise try live
-    if (USE_SNAPSHOT) {
-      console.log(`[App] Using snapshot mode: ${SNAPSHOT_FILE}`);
-      res = await fetch(`${API_BASE}/api/w54/snapshot?file=${SNAPSHOT_FILE}`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    // Single request for today's matches (faster than multiple requests)
+    const today = new Date().toISOString().split('T')[0];
+    const url = `${PHP_API_BASE}/matches.php?date=${today}${cacheBuster}`;
+    console.log(`[App] Fetching matches from: ${url}`);
+    
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache'
       }
-      data = await res.json();
-      console.log(`[App] Received ${data.matches?.length || 0} matches from snapshot`);
-    } else {
-      try {
-        // Add cache buster to prevent browser caching - use more aggressive cache busting if force refresh
-        const timestamp = Date.now();
-        const random = Math.random().toString(36).substring(7);
-        const extraRandom = forceRefresh ? `&_f=${Math.random().toString(36).substring(7)}&_n=${Date.now()}` : '';
-        const cacheBuster = `?_t=${timestamp}&_r=${random}${extraRandom}`;
-        const url = `${API_BASE}/api/w54/live${cacheBuster}`;
-        console.log(`[App] Fetching from: ${url}${forceRefresh ? ' (FORCE REFRESH)' : ''}`);
-        
-        // Use POST method to completely bypass GET cache
-        // Add unique headers to prevent any caching
-        const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        res = await fetch(url, {
-          method: 'GET',
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'If-Modified-Since': '0',
-            'If-None-Match': '*',
-            'X-Request-ID': uniqueId,
-            'X-Request-Time': Date.now().toString(),
-            'X-No-Cache': '1'
-          }
-        });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
-        data = await res.json();
-        console.log(`[App] Received ${data.matches?.length || 0} matches from live endpoint`);
-        console.log(`[App] Raw data from API:`, {
-          source: data.source,
-          matchCount: data.matches?.length || 0,
-          firstMatch: data.matches?.[0] ? {
-            home: data.matches[0].home,
-            away: data.matches[0].away,
-            matchId: data.matches[0].matchId,
-            league: data.matches[0].league
-          } : null
-        });
-        if (data._meta) {
-          console.log(`[App] Metadata:`, data._meta);
-        }
-      } catch (fetchErr) {
-        // If fetch fails (network error, CORS, etc.), try snapshot
-        try {
-          console.log(`[App] Live fetch failed, trying snapshot with ParseInfoNew.html`);
-          res = await fetch(`${API_BASE}/api/w54/snapshot?file=ParseInfoNew.html`);
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-          }
-          data = await res.json();
-          console.log(`[App] Received ${data.matches?.length || 0} matches from snapshot (ParseInfoNew.html)`);
-        } catch (snapshotErr) {
-          // If both fail, show helpful error message
-          const isNetworkError = fetchErr.message.includes('Failed to fetch') || 
-                                 fetchErr.message.includes('NetworkError') ||
-                                 fetchErr.message.includes('Network request failed') ||
-                                 fetchErr.name === 'TypeError';
-          
-          const errorMsg = isNetworkError
-            ? `Failed to connect to API at ${API_BASE}. Make sure the server is running. Start the server with: npm start (in bot folder)`
-            : `Data loading error: ${fetchErr.message}`;
-          
-          throw new Error(errorMsg);
-        }
-      }
+    });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     
-    // If live returns 0 matches, fallback to snapshot
-    if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
-      console.log(`[App] Live returned 0 matches, trying snapshot with ParseInfoNew.html`);
-      res = await fetch(`${API_BASE}/api/w54/snapshot?file=ParseInfoNew.html`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      data = await res.json();
-      console.log(`[App] Received ${data.matches?.length || 0} matches from snapshot fallback`);
+    const data = await res.json();
+    
+    if (!data.matches || !Array.isArray(data.matches)) {
+      throw new Error('Invalid response format');
     }
+    
+    console.log(`[App] Received ${data.matches.length} matches from PHP API`);
     
     if (!data.matches || !Array.isArray(data.matches) || data.matches.length === 0) {
       // Show error message to user
@@ -195,19 +120,21 @@ async function loadMatches(forceRefresh = false) {
     leagueMap.set("all", { id: "all", country: "🌐", name: "All leagues", count: 0 });
 
     // Log raw data before processing
-    console.log(`[App] Processing ${data.matches.length} matches from API`);
+    console.log(`[App] Processing ${data.matches.length} matches from PHP API`);
     console.log(`[App] Sample raw match:`, data.matches[0]);
     
     // Clear previous matches and create new array
     const newMatches = data.matches.map((m, idx) => {
-      const leagueId = m.league || "all";
-      const leagueName = m.league || "Unknown League";
+      // PHP API returns leagueName, but we also need leagueId
+      const leagueId = m.league || m.leagueName || "all";
+      const leagueName = m.leagueName || m.league || "Unknown League";
 
       if (!leagueMap.has(leagueId)) {
         leagueMap.set(leagueId, {
           id: leagueId,
           country: "🏳️",
           name: leagueName,
+          logo: m.leagueLogo || null,
           count: 0
         });
       }
@@ -226,9 +153,29 @@ async function loadMatches(forceRefresh = false) {
       // Store all outcomes (including totals, foras) for future use
       const allOutcomes = outcomes;
 
-      const timeStr = m.startTime
-        ? `${m.startDate || ""} ${m.startTime}`.trim()
-        : "TBD";
+      // Convert time to user's local timezone
+      let timeStr = "TBD";
+      if (m.startDateTimeISO) {
+        try {
+          const matchDate = new Date(m.startDateTimeISO);
+          if (!isNaN(matchDate.getTime())) {
+            // Format: DD.MM HH:mm in user's local timezone
+            const day = String(matchDate.getDate()).padStart(2, '0');
+            const month = String(matchDate.getMonth() + 1).padStart(2, '0');
+            const hours = String(matchDate.getHours()).padStart(2, '0');
+            const minutes = String(matchDate.getMinutes()).padStart(2, '0');
+            timeStr = `${day}.${month} ${hours}:${minutes}`;
+          }
+        } catch (e) {
+          // Fallback to original format if conversion fails
+          timeStr = m.startTime
+            ? `${m.startDate || ""} ${m.startTime}`.trim()
+            : "TBD";
+        }
+      } else if (m.startTime) {
+        // Fallback to original format if ISO date not available
+        timeStr = `${m.startDate || ""} ${m.startTime}`.trim();
+      }
 
       const matchObj = {
         id: m.matchId || `m${idx}`,
@@ -237,9 +184,12 @@ async function loadMatches(forceRefresh = false) {
         detailUrl: m.detailUrl, // Store detail page URL
         leagueId: leagueId,
         leagueName: leagueName,
+        leagueLogo: m.leagueLogo || null,
         time: timeStr,
         home: m.home || "",
         away: m.away || "",
+        homeLogo: m.homeLogo || null,
+        awayLogo: m.awayLogo || null,
         odds: { homeWin, draw, awayWin },
         allOutcomes: allOutcomes, // Store all bet types for future expansion
         isLive: m.isLive || false,
@@ -311,7 +261,7 @@ async function loadMatches(forceRefresh = false) {
     console.error('[App] Error loading matches:', err);
     const root = document.getElementById("matches-list");
     if (root) {
-      root.innerHTML = `<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Loading error: ${err.message}. Make sure API is running on ${API_BASE}</div></div>`;
+      root.innerHTML = `<div class="subcard"><div class="label" style="color:rgba(248,113,113,0.9);">Loading error: ${err.message}. Make sure PHP API is accessible at ${PHP_API_BASE}</div></div>`;
     }
     renderLeagues();
     renderMatches();
@@ -350,7 +300,9 @@ function renderLeagues() {
         state.activeLeagueId === l.id ? "league-item-active" : ""
       }" data-league="${l.id}">
         <div class="league-main">
-          <span class="league-flag">${l.country || "🏳️"}</span>
+          ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+            <span class="league-flag" style="display:none;">${l.country || "🏳️"}</span>` : 
+            `<span class="league-flag">${l.country || "🏳️"}</span>`}
           <span class="league-name">${l.name}</span>
         </div>
         ${l.count > 0 ? `<span class="pill">${l.count}</span>` : ""}
@@ -427,20 +379,6 @@ function renderMatches() {
 
   root.innerHTML = `
     <div class="matches-table">
-      <div class="matches-header">
-        <div class="matches-header-info">Match</div>
-        <div class="matches-header-odds">
-          <span>1</span>
-          <span>X</span>
-          <span>2</span>
-          <span>O</span>
-          <span>Total</span>
-          <span>U</span>
-          <span>1</span>
-          <span>Handicap</span>
-          <span>2</span>
-        </div>
-      </div>
       <div class="matches-container">
         ${paginatedMatches
           .map((m) => renderMatchRow(m))
@@ -480,28 +418,30 @@ function renderMatchRow(match) {
     ? `<span class="live-time-highlight">${match.liveTime}${match.livePeriod ? ' • ' + match.livePeriod : ''}</span>` 
     : `<span class="pill">${match.time || "TBD"}</span>`;
 
+  const homeLogoHtml = match.homeLogo 
+    ? `<img src="${match.homeLogo}" alt="${match.home}" class="team-logo" onerror="this.style.display='none';">` 
+    : '';
+  const awayLogoHtml = match.awayLogo 
+    ? `<img src="${match.awayLogo}" alt="${match.away}" class="team-logo" onerror="this.style.display='none';">` 
+    : '';
+
   return `
     <div class="match-row ${isLive ? 'match-row-live' : ''}" data-match-id="${match.id}">
       <div class="match-info">
         <div class="match-league">${liveBadge} ${match.leagueName}</div>
-        <div class="match-title">${match.home} <span style="opacity:.7">vs</span> ${match.away}</div>
+        <div class="match-title">
+          ${homeLogoHtml}
+          <span class="team-name">${match.home}</span>
+          <span style="opacity:.7">vs</span>
+          <span class="team-name">${match.away}</span>
+          ${awayLogoHtml}
+        </div>
         ${scoreDisplay}
         <div class="match-time">
           ${liveTimeDisplay}
         </div>
       </div>
-      <div class="match-odds-row">
-        ${renderOutcomeButton(match, "1", outcome1X2?.odd)}
-        ${renderOutcomeButton(match, "X", outcomeX?.odd)}
-        ${renderOutcomeButton(match, "2", outcome2?.odd)}
-        ${renderOutcomeButton(match, "total_over", totalOver?.odd, "Б", totalValue)}
-        ${renderOutcomeValue(totalValue)}
-        ${renderOutcomeButton(match, "total_under", totalUnder?.odd, "М", totalValue)}
-        ${renderOutcomeButton(match, "fora_one", fora1?.odd, "1", foraValue)}
-        ${renderOutcomeValue(foraValue)}
-        ${renderOutcomeButton(match, "fora_two", fora2?.odd, "2", foraValue)}
-      </div>
-      <div class="match-actions-mobile">
+      <div class="match-actions">
         <button class="go-to-all-bets-btn" data-match-id="${match.id}">Go to all bets</button>
       </div>
     </div>
@@ -891,6 +831,8 @@ function switchTab(tabName) {
   // Load bets when switching to bets tab
   if (tabName === "bets") {
     loadBets();
+    // Also check and settle bets when switching to bets tab
+    checkAndSettleBets();
   }
   
   // Close betslip on mobile when switching tabs (except when opening betslip)
@@ -1003,12 +945,89 @@ async function loadBets() {
     } else {
       bets = [];
     }
+    
+    // Automatically check and settle bets
+    await checkAndSettleBets();
   } catch (error) {
     console.error('[App] Error loading bets:', error);
     bets = [];
   }
   
   renderBets();
+}
+
+// Check and settle bets automatically
+async function checkAndSettleBets() {
+  try {
+    console.log('[SettleBets] Checking for finished bets...');
+    const response = await fetch(`${PHP_API_BASE}/settle-bets.php`, {
+      method: 'GET',
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[SettleBets] HTTP Error:', response.status, errorText);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('[SettleBets] Response:', data);
+    
+    // Log match statuses from API for debugging
+    if (data.debug && data.debug.length > 0) {
+      console.log('[SettleBets] Match statuses from API:');
+      data.debug.forEach((info, index) => {
+        console.log(`  [${index + 1}] Bet ID: ${info.bet_id}, Fixture ID: ${info.fixture_id}`);
+        console.log(`      Status (long): "${info.status_long}"`);
+        console.log(`      Status (short): "${info.status_short}"`);
+        console.log(`      Is Finished: ${info.is_finished}`);
+        if (info.bet_data) {
+          console.log(`      Bet Data:`, info.bet_data);
+        }
+        if (info.calculation_result !== undefined) {
+          console.log(`      Calculation Result: ${info.calculation_result}`);
+        }
+        if (info.calculation_error) {
+          console.error(`      Calculation Error: ${info.calculation_error}`);
+        }
+        if (info.update_error) {
+          console.error(`      Update Error: ${info.update_error}`);
+        }
+        if (info.raw_status) {
+          console.log(`      Raw status object:`, info.raw_status);
+        }
+      });
+    }
+    
+    if (data.success) {
+      if (data.settled > 0) {
+        console.log(`[SettleBets] ${data.settled} bet(s) settled successfully`);
+        // Reload bets to show updated status if on bets tab
+        if (state.activeTab === 'bets') {
+          await loadBets();
+        }
+        // Update balance if bets were won - reload user data
+        if (typeof loadUser === 'function') {
+          await loadUser();
+        } else if (typeof updateProfileBalance === 'function') {
+          updateProfileBalance();
+        }
+      } else {
+        console.log('[SettleBets] No bets to settle');
+        if (data.debug && data.debug.length > 0) {
+          console.log('[SettleBets] Check the match statuses above to see why bets are not being settled');
+        }
+      }
+      if (data.errors && data.errors.length > 0) {
+        console.error('[SettleBets] Errors:', data.errors);
+      }
+    } else {
+      console.error('[SettleBets] Failed:', data.error);
+    }
+  } catch (error) {
+    console.error('[SettleBets] Error:', error);
+  }
 }
 
 // Test data for bets (will be replaced with API call later) - DEPRECATED, use bets array
@@ -1278,7 +1297,8 @@ function init() {
       }
       
       // Otherwise, check if we should open match detail modal
-      if (e.target.closest(".outcome-btn, .outcome-cell, .match-odds-row, .match-actions-mobile, .go-to-all-bets-btn")) {
+      // Don't open modal if clicking on action button
+      if (e.target.closest(".go-to-all-bets-btn, .match-actions, .match-actions-mobile")) {
         return;
       }
       
@@ -1287,14 +1307,15 @@ function init() {
         return;
       }
       
+      // On desktop, clicking match row opens detail modal
       const matchRow = e.target.closest(".match-row");
       if (!matchRow) return;
       
       const matchId = matchRow.getAttribute("data-match-id");
       const match = matches.find((m) => m.id === matchId);
-      if (!match || !match.detailUrl) return;
+      if (!match || !match.matchId) return;
       
-      loadMatchDetail(match.detailUrl, match);
+      loadMatchDetail(match.matchId, match);
     });
   document.getElementById("slip-items").addEventListener("click", handleSlipClick);
 
@@ -1393,16 +1414,42 @@ function init() {
         alert(`Bet placed successfully! Bet ID: ${data.bets[0].id}`);
       }
       
+      // Обновляем баланс сразу после создания ставки
+      if (data.newBalance !== undefined) {
+        // Update currentUser if it exists
+        if (typeof currentUser !== 'undefined' && currentUser) {
+          currentUser.balance = parseFloat(data.newBalance);
+        }
+        
+        // Update balance in UI immediately
+        const balanceText = `$${parseFloat(data.newBalance).toFixed(2)}`;
+        const balanceElMobile = document.getElementById('profile-balance-mobile');
+        const balanceElDesktop = document.getElementById('profile-balance-desktop');
+        
+        if (balanceElMobile) {
+          balanceElMobile.textContent = balanceText;
+        }
+        if (balanceElDesktop) {
+          balanceElDesktop.textContent = balanceText;
+        }
+        
+        // Also update wallet balance if exists
+        const walletBalanceEl = document.getElementById('wallet-balance');
+        if (walletBalanceEl) {
+          walletBalanceEl.textContent = balanceText;
+        }
+        
+        // Call updateProfileBalance if function exists
+        if (typeof updateProfileBalance === 'function') {
+          updateProfileBalance();
+        }
+      }
+      
       // Очищаем betslip
       state.slip = [];
       state.stake = 0;
       renderMatches();
       renderSlip();
-      
-      // Обновляем баланс
-      if (data.newBalance !== undefined) {
-        updateProfileBalance();
-      }
       
       // Обновляем список ставок, если мы на странице ставок
       if (state.activeTab === 'bets') {
@@ -1462,14 +1509,43 @@ function openModal() {
   if (modal) modal.style.display = "flex";
 }
 
-async function loadMatchDetail(detailUrl, match) {
+async function loadMatchDetail(fixtureIdOrMatch, match) {
   
   const modal = document.getElementById("match-detail-modal");
   const modalTitle = document.getElementById("modal-match-title");
   const modalBody = document.getElementById("modal-body");
   
-  // Set title
-  modalTitle.textContent = `${match.home} vs ${match.away}`;
+  // Handle both cases: fixtureId as first param or match object
+  let fixtureId;
+  let matchObj;
+  
+  if (typeof fixtureIdOrMatch === 'string' || typeof fixtureIdOrMatch === 'number') {
+    // First param is fixtureId
+    fixtureId = String(fixtureIdOrMatch);
+    matchObj = match;
+  } else {
+    // First param is match object (backward compatibility)
+    matchObj = fixtureIdOrMatch;
+    fixtureId = matchObj.matchId;
+  }
+  
+  if (!matchObj) {
+    matchObj = matches.find(m => m.matchId === fixtureId || m.id === fixtureId);
+  }
+  
+  // Log fixture_id when clicking on match
+  console.log('Match clicked - fixture_id:', fixtureId);
+  
+  // Set title with logos
+  const home = matchObj?.home || 'Home';
+  const away = matchObj?.away || 'Away';
+  const homeLogo = matchObj?.homeLogo || null;
+  const awayLogo = matchObj?.awayLogo || null;
+  
+  const homeLogoHtml = homeLogo ? `<img src="${homeLogo}" alt="${home}" class="team-logo" onerror="this.style.display='none';">` : '';
+  const awayLogoHtml = awayLogo ? `<img src="${awayLogo}" alt="${away}" class="team-logo" onerror="this.style.display='none';">` : '';
+  
+  modalTitle.innerHTML = `${homeLogoHtml}<span class="team-name">${home}</span> <span style="opacity:.7">vs</span> <span class="team-name">${away}</span>${awayLogoHtml}`;
   
   // Show skeleton loading
   modalBody.innerHTML = `
@@ -1501,190 +1577,95 @@ async function loadMatchDetail(detailUrl, match) {
   openModal();
   
   try {
-    // Ensure URL is absolute
-    const url = detailUrl.startsWith("http") 
-      ? detailUrl 
-      : `https://w54rjjmb.com${detailUrl}`;
+    // Use PHP API to get match details and odds
+    if (!fixtureId) {
+      modalBody.innerHTML = '<div class="loading">Match ID not found</div>';
+      return;
+    }
     
-    
-    const res = await fetch(`${API_BASE}/api/w54/detail?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     
     const data = await res.json();
     
-    if (!data.outcomes || data.outcomes.length === 0) {
+    if (!data.ok || !data.odds || data.odds.length === 0) {
       modalBody.innerHTML = '<div class="loading">Odds not found</div>';
       return;
     }
     
-    // Group outcomes by type
-    const grouped = {
-      "1x2": [],
-      "total": [],
-      "fora": [],
-      "other": []
-    };
-    
-    data.outcomes.forEach((outcome) => {
-      const type = outcome.type || "other";
-      if (grouped[type]) {
-        grouped[type].push(outcome);
-      } else {
-        grouped.other.push(outcome);
-      }
-    });
-    
-    // Render grouped outcomes
+    // Render odds as they come from API - grouped by bookmaker and bet type
     let html = '<div class="detail-outcomes">';
     
-    // 1X2 outcomes
-    if (grouped["1x2"].length > 0) {
-      html += '<div class="detail-outcome-group">';
-      html += '<div class="detail-outcome-group-title">Match Result (1X2)</div>';
-      html += '<div class="detail-outcomes-grid">';
-      grouped["1x2"].forEach((outcome) => {
-        const outcomeKey = outcome.label === "1" ? "1" : outcome.label === "X" ? "X" : "2";
-        const isActive = state.slip.some(
-          (s) => s.matchId === match.id && 
-                 s.outcomeKey === outcomeKey && 
-                 !s.value // 1X2 outcomes don't have value
-        );
-        const uniqueId = `${match.id}_${outcomeKey}_${outcome.odd}`;
-        html += `
-          <button class="detail-outcome-item detail-outcome-btn ${isActive ? "detail-outcome-btn-active" : ""}" 
-                  data-match-id="${match.id}" 
-                  data-outcome-key="${outcomeKey}" 
-                  data-odd="${outcome.odd}"
-                  data-label="${outcome.label}"
-                  data-unique-id="${uniqueId}">
-            <div class="detail-outcome-label">${outcome.label}</div>
-            <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
-          </button>
-        `;
-      });
-      html += '</div></div>';
-    }
-    
-    // Totals
-    if (grouped["total"].length > 0) {
-      // Group by value
-      const totalsByValue = {};
-      grouped["total"].forEach((outcome) => {
-        const value = outcome.value || "?";
-        if (!totalsByValue[value]) totalsByValue[value] = [];
-        totalsByValue[value].push(outcome);
+    // Group by bookmaker
+    data.odds.forEach(bookmaker => {
+      if (!bookmaker.bets || !Array.isArray(bookmaker.bets) || bookmaker.bets.length === 0) return;
+      
+      const bookmakerName = bookmaker.name || 'Unknown Bookmaker';
+      html += `<div class="detail-bookmaker-group">`;
+      html += `<div class="detail-bookmaker-title">${bookmakerName}</div>`;
+      
+      // Group bets by bet name
+      const betsByType = {};
+      bookmaker.bets.forEach(bet => {
+        if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) return;
+        
+        const betName = bet.name || 'Unknown Bet';
+        if (!betsByType[betName]) {
+          betsByType[betName] = [];
+        }
+        betsByType[betName].push(bet);
       });
       
-      Object.keys(totalsByValue).forEach((value) => {
-        html += '<div class="detail-outcome-group">';
-        html += `<div class="detail-outcome-group-title">Total ${value}</div>`;
-        html += '<div class="detail-outcomes-grid">';
-        totalsByValue[value].forEach((outcome) => {
-          const outcomeKey = outcome.label.includes("Б") || outcome.label.includes("больше") || outcome.label.includes("over") 
-            ? "total_over" 
-            : "total_under";
-          const normalizedValue = value ? String(value).trim() : null;
-          const uniqueId = `${match.id}_${outcomeKey}_${value}_${outcome.odd}`;
-          const isActive = state.slip.some(
-            (s) => {
-              if (s.matchId !== match.id || s.outcomeKey !== outcomeKey) return false;
-              if (normalizedValue) {
-                const sValue = s.value ? String(s.value).trim() : null;
-                return sValue === normalizedValue;
-              }
-              return !s.value;
-            }
-          );
-          html += `
-            <button class="detail-outcome-item detail-outcome-btn ${isActive ? "detail-outcome-btn-active" : ""}" 
-                    data-match-id="${match.id}" 
-                    data-outcome-key="${outcomeKey}" 
-                    data-odd="${outcome.odd}"
-                    data-label="${outcome.label}"
-                    data-value="${value}"
-                    data-unique-id="${uniqueId}">
-              <div class="detail-outcome-label">${outcome.label}</div>
-              <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
-            </button>
-          `;
+      // Render each bet type
+      Object.keys(betsByType).forEach(betName => {
+        html += `<div class="detail-bet-group">`;
+        html += `<div class="detail-bet-title">${betName}</div>`;
+        html += `<div class="detail-outcomes-grid">`;
+        
+        betsByType[betName].forEach(bet => {
+          bet.values.forEach(value => {
+            const label = value.value;
+            const odd = parseFloat(value.odd);
+            
+            if (isNaN(odd) || odd <= 0) return;
+            
+            // Create unique identifier for this outcome
+            const outcomeId = `${fixtureId}_${bookmaker.id}_${bet.id}_${label}_${odd}`;
+            const matchId = matchObj?.id || fixtureId;
+            
+            // Check if this outcome is in slip
+            const isActive = state.slip.some(s => {
+              return s.outcomeId === outcomeId || 
+                     (s.matchId === matchId && 
+                      s.bookmakerId === String(bookmaker.id) && 
+                      s.betId === String(bet.id) && 
+                      s.value === label &&
+                      Math.abs(s.odd - odd) < 0.01);
+            });
+            
+            html += `
+              <button class="detail-outcome-item detail-outcome-btn ${isActive ? "detail-outcome-btn-active" : ""}" 
+                      data-match-id="${matchId}"
+                      data-fixture-id="${fixtureId}"
+                      data-bookmaker-id="${bookmaker.id}"
+                      data-bookmaker-name="${bookmakerName}"
+                      data-bet-id="${bet.id}"
+                      data-bet-name="${betName}"
+                      data-value="${label}"
+                      data-odd="${odd}"
+                      data-outcome-id="${outcomeId}">
+                <div class="detail-outcome-label">${label}</div>
+                <div class="detail-outcome-value">${formatOdd(odd)}</div>
+              </button>
+            `;
+          });
         });
-        html += '</div></div>';
-      });
-    }
-    
-    // Foras
-    if (grouped["fora"].length > 0) {
-      // Group by value
-      const forasByValue = {};
-      grouped["fora"].forEach((outcome) => {
-        const value = outcome.value || "?";
-        if (!forasByValue[value]) forasByValue[value] = [];
-        forasByValue[value].push(outcome);
+        
+        html += `</div></div>`;
       });
       
-      Object.keys(forasByValue).forEach((value) => {
-        html += '<div class="detail-outcome-group">';
-        html += `<div class="detail-outcome-group-title">Handicap ${value}</div>`;
-        html += '<div class="detail-outcomes-grid">';
-        forasByValue[value].forEach((outcome) => {
-          const outcomeKey = outcome.label.includes("1") || outcome.label.includes("Фора 1")
-            ? "fora_one" 
-            : "fora_two";
-          const normalizedValue = value ? String(value).trim() : null;
-          const uniqueId = `${match.id}_${outcomeKey}_${value}_${outcome.odd}`;
-          const isActive = state.slip.some(
-            (s) => {
-              if (s.matchId !== match.id || s.outcomeKey !== outcomeKey) return false;
-              if (normalizedValue) {
-                const sValue = s.value ? String(s.value).trim() : null;
-                return sValue === normalizedValue;
-              }
-              return !s.value;
-            }
-          );
-          html += `
-            <button class="detail-outcome-item detail-outcome-btn ${isActive ? "detail-outcome-btn-active" : ""}" 
-                    data-match-id="${match.id}" 
-                    data-outcome-key="${outcomeKey}" 
-                    data-odd="${outcome.odd}"
-                    data-label="${outcome.label}"
-                    data-value="${value}"
-                    data-unique-id="${uniqueId}">
-              <div class="detail-outcome-label">${outcome.label}</div>
-              <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
-            </button>
-          `;
-        });
-        html += '</div></div>';
-      });
-    }
-    
-    // Other outcomes
-    if (grouped["other"].length > 0) {
-      html += '<div class="detail-outcome-group">';
-      html += '<div class="detail-outcome-group-title">Other Bets</div>';
-      html += '<div class="detail-outcomes-grid">';
-      grouped["other"].forEach((outcome, idx) => {
-        const outcomeKey = `other_${idx}`;
-        const uniqueId = `${match.id}_${outcomeKey}_${outcome.odd}`;
-        const isActive = state.slip.some(
-          (s) => s.matchId === match.id && s.outcomeKey === outcomeKey
-        );
-        html += `
-          <button class="detail-outcome-item detail-outcome-btn ${isActive ? "detail-outcome-btn-active" : ""}" 
-                  data-match-id="${match.id}" 
-                  data-outcome-key="${outcomeKey}" 
-                  data-odd="${outcome.odd}"
-                  data-label="${outcome.label || "—"}"
-                  data-unique-id="${uniqueId}">
-            <div class="detail-outcome-label">${outcome.label || "—"}</div>
-            <div class="detail-outcome-value">${formatOdd(outcome.odd)}</div>
-            ${outcome.value ? `<div class="detail-outcome-param">${outcome.value}</div>` : ""}
-          </button>
-        `;
-      });
-      html += '</div></div>';
-    }
+      html += `</div>`;
+    });
     
     html += '</div>';
     modalBody.innerHTML = html;
@@ -1694,31 +1675,31 @@ async function loadMatchDetail(detailUrl, match) {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const matchId = btn.getAttribute('data-match-id');
-        const outcomeKey = btn.getAttribute('data-outcome-key');
-        const label = btn.getAttribute('data-label');
-        const odd = Number(btn.getAttribute('data-odd'));
+        const fixtureId = btn.getAttribute('data-fixture-id');
+        const bookmakerId = btn.getAttribute('data-bookmaker-id');
+        const bookmakerName = btn.getAttribute('data-bookmaker-name');
+        const betId = btn.getAttribute('data-bet-id');
+        const betName = btn.getAttribute('data-bet-name');
         const value = btn.getAttribute('data-value');
+        const odd = Number(btn.getAttribute('data-odd'));
+        const outcomeId = btn.getAttribute('data-outcome-id');
         
-        if (!matchId || !outcomeKey || !odd) return;
+        // Log fixture_id and bet_id when clicking on bet
+        console.log('Bet clicked - fixture_id:', fixtureId, 'bet_id:', betId);
+        
+        if (!matchId || !outcomeId || !odd) return;
         
         const matchObj = matches.find((m) => m.id === matchId);
         if (!matchObj) return;
         
-        // Normalize value to string for comparison
-        const normalizedValue = value ? String(value).trim() : null;
-        
-        // Check if it's the exact same outcome (with same value if applicable)
+        // Check if it's the exact same outcome
         const existingSameOutcomeIdx = state.slip.findIndex(
-          (s) => {
-            if (s.matchId !== matchId || s.outcomeKey !== outcomeKey) return false;
-            // For outcomes with value (totals, foras), must match value exactly
-            if (normalizedValue) {
-              const sValue = s.value ? String(s.value).trim() : null;
-              return sValue === normalizedValue;
-            }
-            // For outcomes without value (1X2), must not have value
-            return !s.value;
-          }
+          (s) => s.outcomeId === outcomeId || 
+                 (s.matchId === matchId && 
+                  s.bookmakerId === bookmakerId && 
+                  s.betId === betId && 
+                  s.value === value &&
+                  Math.abs(s.odd - odd) < 0.01)
         );
         
         // Check if there's already ANY bet on this match (different outcome)
@@ -1726,59 +1707,47 @@ async function loadMatchDetail(detailUrl, match) {
         
         const next = {
           matchId: matchObj.id,
-          outcomeKey,
-          label: label || outcomeKey,
-          odd,
-          home: matchObj.home,
-          away: matchObj.away,
-          leagueName: matchObj.leagueName,
-          value: normalizedValue || undefined
+          fixtureId: fixtureId || matchObj.matchId,
+          bookmakerId: String(bookmakerId),
+          bookmakerName: bookmakerName,
+          betId: String(betId),
+          betName: betName,
+          value: value,
+          odd: odd,
+          outcomeId: outcomeId,
+          home: matchObj.home || home,
+          away: matchObj.away || away,
+          leagueName: matchObj.leagueName || 'Unknown League',
+          // For display
+          label: `${bookmakerName} - ${betName}: ${value}`,
+          outcomeKey: `api_${bookmakerId}_${betId}_${value}`
         };
         
-  // If clicking the same exact outcome, toggle it off
-  if (existingSameOutcomeIdx >= 0) {
-    state.slip.splice(existingSameOutcomeIdx, 1);
-  } 
-  // If there's already a bet on this match (different outcome), replace it
-  else if (existingMatchIdx >= 0) {
-    state.slip.splice(existingMatchIdx, 1, next);
-  }
-  // Otherwise, add the new bet
-  else {
-    state.slip.unshift(next);
-  }
-  
-  renderMatches();
-  renderSlip();
-  
-  // Open betslip on mobile when adding bet (after a short delay to allow UI to update)
-  if (isMobile()) {
-    setTimeout(() => openBetslipMobile(), 150);
-  }
+        // If clicking the same exact outcome, toggle it off
+        if (existingSameOutcomeIdx >= 0) {
+          state.slip.splice(existingSameOutcomeIdx, 1);
+        } 
+        // If there's already a bet on this match (different outcome), replace it
+        else if (existingMatchIdx >= 0) {
+          state.slip.splice(existingMatchIdx, 1, next);
+        }
+        // Otherwise, add the new bet
+        else {
+          state.slip.unshift(next);
+        }
         
-        // Update active states in modal without re-rendering - use unique ID to avoid conflicts
+        renderMatches();
+        renderSlip();
+        
+        // Open betslip on mobile when adding bet (after a short delay to allow UI to update)
+        if (isMobile()) {
+          setTimeout(() => openBetslipMobile(), 150);
+        }
+        
+        // Update active states in modal without re-rendering
         modalBody.querySelectorAll('.detail-outcome-btn').forEach(btn => {
-          const btnMatchId = btn.getAttribute('data-match-id');
-          const btnOutcomeKey = btn.getAttribute('data-outcome-key');
-          const btnValue = btn.getAttribute('data-value');
-          const btnOdd = btn.getAttribute('data-odd');
-          const normalizedBtnValue = btnValue ? String(btnValue).trim() : null;
-          
-          // Use unique combination to identify exact outcome
-          const isActive = state.slip.some(
-            (s) => {
-              if (s.matchId !== btnMatchId || s.outcomeKey !== btnOutcomeKey) return false;
-              // Also check odd to ensure exact match
-              if (Math.abs(s.odd - Number(btnOdd)) > 0.01) return false;
-              // For outcomes with value (totals, foras), must match value exactly
-              if (normalizedBtnValue) {
-                const sValue = s.value ? String(s.value).trim() : null;
-                return sValue === normalizedBtnValue;
-              }
-              // For outcomes without value (1X2), must not have value
-              return !s.value;
-            }
-          );
+          const btnOutcomeId = btn.getAttribute('data-outcome-id');
+          const isActive = state.slip.some(s => s.outcomeId === btnOutcomeId);
           if (isActive) {
             btn.classList.add('detail-outcome-btn-active');
           } else {
@@ -1817,6 +1786,13 @@ window.addEventListener("DOMContentLoaded", () => {
   init();
   // Load matches only on initial page load
   loadMatches(true);
+  // Check and settle bets on page load
+  checkAndSettleBets();
+  
+  // Set up periodic check for settled bets (every 30 seconds)
+  setInterval(() => {
+    checkAndSettleBets();
+  }, 30000); // Check every 30 seconds
   
   // Setup mobile betslip handlers
   const floatBtn = document.getElementById("betslip-float-btn");
@@ -1881,16 +1857,19 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
   
-  // Handle "Go to all bets" button clicks on mobile
+  // Handle "Go to all bets" button clicks (works on both mobile and desktop)
   document.addEventListener('click', (e) => {
     const goToBetsBtn = e.target.closest('.go-to-all-bets-btn');
     if (!goToBetsBtn) return;
     
+    e.stopPropagation();
+    e.preventDefault();
+    
     const matchId = goToBetsBtn.getAttribute('data-match-id');
     const match = matches.find((m) => m.id === matchId);
-    if (!match || !match.detailUrl) return;
+    if (!match || !match.matchId) return;
     
-    loadMatchDetail(match.detailUrl, match);
+    loadMatchDetail(match.matchId, match);
   });
   
   // Handle profile icon click

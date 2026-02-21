@@ -40,7 +40,13 @@ if ($method === 'POST' && empty($betId)) {
         $totalOdds = 1;
         $validSlipItems = [];
         foreach ($data['slip'] as $slipItem) {
-            if (empty($slipItem['matchId']) || empty($slipItem['outcomeKey']) || empty($slipItem['odd'])) {
+            // Accept both old format (outcomeKey) and new format (from API with bookmakerId, betId, value)
+            if (empty($slipItem['matchId']) || empty($slipItem['odd'])) {
+                continue;
+            }
+            // New format: must have bookmakerId, betId, value
+            // Old format: must have outcomeKey
+            if (empty($slipItem['outcomeKey']) && (empty($slipItem['bookmakerId']) || empty($slipItem['betId']))) {
                 continue;
             }
             $validSlipItems[] = $slipItem;
@@ -69,9 +75,12 @@ if ($method === 'POST' && empty($betId)) {
         
         $potentialWin = $stake * $totalOdds;
         
-        // Определяем тип исхода (для экспресса используем тип первого)
+        // Определяем тип исхода из API данных
         $outcomeType = null;
-        if (in_array($firstItem['outcomeKey'], ['1', 'X', '2'])) {
+        if (isset($firstItem['betName'])) {
+            // Use bet name from API
+            $outcomeType = $firstItem['betName'];
+        } elseif (in_array($firstItem['outcomeKey'], ['1', 'X', '2'])) {
             $outcomeType = '1x2';
         } elseif (strpos($firstItem['outcomeKey'], 'total') !== false) {
             $outcomeType = 'total';
@@ -79,8 +88,14 @@ if ($method === 'POST' && empty($betId)) {
             $outcomeType = 'fora';
         }
         
-        // Формируем label для экспресса
+        // Формируем label из API данных (bookmaker - bet name: value)
         $outcomeLabel = $firstItem['label'] ?? $firstItem['outcomeKey'];
+        if (isset($firstItem['bookmakerName']) && isset($firstItem['betName']) && isset($firstItem['value'])) {
+            $outcomeLabel = $firstItem['bookmakerName'] . ' - ' . $firstItem['betName'] . ': ' . $firstItem['value'];
+        } elseif (isset($firstItem['bookmakerName']) && isset($firstItem['betName'])) {
+            $outcomeLabel = $firstItem['bookmakerName'] . ' - ' . $firstItem['betName'];
+        }
+        
         if ($isExpress) {
             $outcomeLabel = 'Express (' . count($validSlipItems) . ' outcomes)';
         }
@@ -88,33 +103,81 @@ if ($method === 'POST' && empty($betId)) {
         // Сохраняем детали всех исходов в JSON
         $betDetails = json_encode($validSlipItems, JSON_UNESCAPED_UNICODE);
         
-        // Вставляем ставку
-        $stmt = $db->prepare("
-            INSERT INTO bets (
-                bet_id, user_id, match_id, line_id,
-                match_home, match_away, match_league,
-                outcome_key, outcome_label, outcome_type, outcome_value,
-                odd, stake, potential_win, status, bet_details
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-        ");
+        // Get fixture_id from first item (use fixtureId if available, otherwise matchId)
+        $fixtureId = $firstItem['fixtureId'] ?? $firstItem['matchId'] ?? '';
+        $matchId = $firstItem['matchId'] ?? '';
         
-        $stmt->execute([
-            $betIdValue,
-            $user['id'],
-            $firstItem['matchId'] ?? '',
-            $firstItem['lineId'] ?? null,
-            $firstItem['home'] ?? '',
-            $firstItem['away'] ?? '',
-            $firstItem['leagueName'] ?? null,
-            $firstItem['outcomeKey'],
-            $outcomeLabel,
-            $outcomeType,
-            $firstItem['value'] ?? null,
-            $totalOdds, // Общий коэффициент для экспресса
-            $stake,
-            $potentialWin,
-            $betDetails
-        ]);
+        // Set initial status to 'active' (will be checked and settled automatically)
+        $initialStatus = 'active';
+        
+        // Вставляем ставку
+        // Check if fixture_id column exists, if not use match_id for both
+        try {
+            $checkColumn = $db->query("SHOW COLUMNS FROM bets LIKE 'fixture_id'");
+            $hasFixtureId = $checkColumn->rowCount() > 0;
+        } catch (Exception $e) {
+            $hasFixtureId = false;
+        }
+        
+        if ($hasFixtureId) {
+            $stmt = $db->prepare("
+                INSERT INTO bets (
+                    bet_id, user_id, match_id, fixture_id, line_id,
+                    match_home, match_away, match_league,
+                    outcome_key, outcome_label, outcome_type, outcome_value,
+                    odd, stake, potential_win, status, bet_details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            
+            $stmt->execute([
+                $betIdValue,
+                $user['id'],
+                $matchId,
+                $fixtureId, // Save fixture_id for API calls
+                $firstItem['lineId'] ?? null,
+                $firstItem['home'] ?? '',
+                $firstItem['away'] ?? '',
+                $firstItem['leagueName'] ?? null,
+                $firstItem['outcomeKey'],
+                $outcomeLabel,
+                $outcomeType,
+                $firstItem['value'] ?? null,
+                $totalOdds, // Общий коэффициент для экспресса
+                $stake,
+                $potentialWin,
+                $initialStatus,
+                $betDetails
+            ]);
+        } else {
+            // Fallback if fixture_id column doesn't exist yet
+            $stmt = $db->prepare("
+                INSERT INTO bets (
+                    bet_id, user_id, match_id, line_id,
+                    match_home, match_away, match_league,
+                    outcome_key, outcome_label, outcome_type, outcome_value,
+                    odd, stake, potential_win, status, bet_details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            
+            $stmt->execute([
+                $betIdValue,
+                $user['id'],
+                $matchId,
+                $firstItem['lineId'] ?? null,
+                $firstItem['home'] ?? '',
+                $firstItem['away'] ?? '',
+                $firstItem['leagueName'] ?? null,
+                $firstItem['outcomeKey'],
+                $outcomeLabel,
+                $outcomeType,
+                $firstItem['value'] ?? null,
+                $totalOdds,
+                $stake,
+                $potentialWin,
+                $initialStatus,
+                $betDetails
+            ]);
+        }
         
         $createdBets = [
             [

@@ -29,9 +29,10 @@ function apiSportsRequest($endpoint, $params = []) {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'x-apisports-key: ' . API_SPORTS_KEY,
+        'x-rapidapi-key: ' . API_SPORTS_KEY, // Try both headers for compatibility
         'Accept: application/json'
     ]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -86,19 +87,6 @@ try {
     
     $fixture = $fixturesData['response'][0];
     
-    // Get all odds from all bookmakers
-    $oddsData = null;
-    try {
-        $oddsResponse = apiSportsRequest('/odds', [
-            'fixture' => $fixtureId
-        ]);
-        if (isset($oddsResponse['response']) && !empty($oddsResponse['response'])) {
-            $oddsData = $oddsResponse['response'][0];
-        }
-    } catch (Exception $e) {
-        error_log('Failed to get odds for fixture ' . $fixtureId . ': ' . $e->getMessage());
-    }
-    
     // Build match info
     $matchId = (string)$fixture['fixture']['id'];
     $home = $fixture['teams']['home']['name'];
@@ -106,10 +94,11 @@ try {
     $league = $fixture['league']['name'];
     $country = $fixture['league']['country'] ?? '';
     
-    // Parse date and time
+    // Parse date and time (keep original UTC time for client-side conversion)
     $dateTime = new DateTime($fixture['fixture']['date']);
     $startDate = $dateTime->format('d.m');
     $startTime = $dateTime->format('H:i');
+    $startDateTimeISO = $dateTime->format('c'); // ISO 8601 format for client-side timezone conversion
     
     // Check if match is live or finished
     $status = $fixture['fixture']['status']['long'] ?? '';
@@ -134,10 +123,115 @@ try {
         }
     }
     
+    // Get odds - for live matches, try /odds/live first, then fallback to /odds
+    $oddsData = null;
+    if ($isLive) {
+        // First try /odds/live endpoint for live matches
+        try {
+            $liveOddsResponse = apiSportsRequest('/odds/live', [
+                'fixture' => $fixtureId
+            ]);
+            // Check if response has data (not empty array)
+            if (isset($liveOddsResponse['response']) && is_array($liveOddsResponse['response']) && !empty($liveOddsResponse['response'])) {
+                $oddsData = $liveOddsResponse['response'][0];
+                error_log('Using live odds for fixture ' . $fixtureId);
+            } else {
+                // Live odds response is empty, fallback to regular odds
+                error_log('Live odds empty for fixture ' . $fixtureId . ', trying regular odds');
+                try {
+                    $oddsResponse = apiSportsRequest('/odds', [
+                        'fixture' => $fixtureId
+                    ]);
+                    if (isset($oddsResponse['response']) && !empty($oddsResponse['response'])) {
+                        $oddsData = $oddsResponse['response'][0];
+                    }
+                } catch (Exception $e) {
+                    error_log('Failed to get regular odds for fixture ' . $fixtureId . ': ' . $e->getMessage());
+                }
+            }
+        } catch (Exception $e) {
+            // If /odds/live fails, try regular /odds endpoint
+            error_log('Failed to get live odds for fixture ' . $fixtureId . ': ' . $e->getMessage() . ', trying regular odds');
+            try {
+                $oddsResponse = apiSportsRequest('/odds', [
+                    'fixture' => $fixtureId
+                ]);
+                if (isset($oddsResponse['response']) && !empty($oddsResponse['response'])) {
+                    $oddsData = $oddsResponse['response'][0];
+                }
+            } catch (Exception $e2) {
+                error_log('Failed to get odds for fixture ' . $fixtureId . ': ' . $e2->getMessage());
+            }
+        }
+    } else {
+        // For non-live matches, use regular /odds endpoint
+        try {
+            $oddsResponse = apiSportsRequest('/odds', [
+                'fixture' => $fixtureId
+            ]);
+            if (isset($oddsResponse['response']) && !empty($oddsResponse['response'])) {
+                $oddsData = $oddsResponse['response'][0];
+            }
+        } catch (Exception $e) {
+            error_log('Failed to get odds for fixture ' . $fixtureId . ': ' . $e->getMessage());
+        }
+    }
+    
     // Build all odds from all bookmakers
     $allOdds = [];
     
-    if ($oddsData && isset($oddsData['bookmakers']) && is_array($oddsData['bookmakers'])) {
+    // Check if odds is in live format (has 'odds' array directly) or regular format (has 'bookmakers')
+    $isLiveFormat = ($oddsData && isset($oddsData['odds']) && is_array($oddsData['odds']));
+    $isRegularFormat = ($oddsData && isset($oddsData['bookmakers']) && is_array($oddsData['bookmakers']));
+    
+    // Process live format (odds array directly)
+    if ($isLiveFormat) {
+        // In live format, there are no bookmakers, so we create a single "Live" bookmaker
+        $liveOdds = [
+            'id' => 'live',
+            'name' => 'Live Odds',
+            'bets' => []
+        ];
+        
+        foreach ($oddsData['odds'] as $bet) {
+            if (!isset($bet['id']) || !isset($bet['name']) || !isset($bet['values']) || !is_array($bet['values'])) {
+                continue;
+            }
+            
+            $betData = [
+                'id' => $bet['id'],
+                'name' => $bet['name'],
+                'values' => []
+            ];
+            
+            foreach ($bet['values'] as $value) {
+                if (!isset($value['value']) || !isset($value['odd']) || ($value['suspended'] ?? false)) {
+                    continue;
+                }
+                
+                $valueData = [
+                    'value' => $value['value'],
+                    'odd' => floatval($value['odd'])
+                ];
+                
+                if (isset($value['handicap'])) {
+                    $valueData['handicap'] = $value['handicap'];
+                }
+                
+                $betData['values'][] = $valueData;
+            }
+            
+            if (!empty($betData['values'])) {
+                $liveOdds['bets'][] = $betData;
+            }
+        }
+        
+        if (!empty($liveOdds['bets'])) {
+            $allOdds[] = $liveOdds;
+        }
+    }
+    // Process regular format (with bookmakers)
+    elseif ($isRegularFormat) {
         foreach ($oddsData['bookmakers'] as $bookmaker) {
             $bookmakerId = $bookmaker['id'] ?? null;
             $bookmakerName = $bookmaker['name'] ?? 'Unknown';
@@ -196,6 +290,7 @@ try {
             'leagueName' => $country ? "$country. $league" : $league,
             'startDate' => $startDate,
             'startTime' => $startTime,
+            'startDateTimeISO' => $startDateTimeISO, // ISO 8601 format for timezone conversion
             'isLive' => $isLive,
             'isFinished' => $isFinished,
             'liveTime' => $liveTime,
