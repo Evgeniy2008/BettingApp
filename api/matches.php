@@ -617,17 +617,17 @@ try {
                 
                 $fixtureId = $fixture['fixture']['id'];
                 
-                // Get odds from /odds endpoint
+                // Try to get odds (optional - match will be shown even without odds)
                 $oddsData = null;
                 try {
-                    $oddsResponse = apiSportsRequest('/odds', [
-                        'fixture' => $fixtureId
-                    ]);
+                    $isLive = !empty($fixture['fixture']['status']['elapsed']);
+                    $endpoint = $isLive ? '/odds/live' : '/odds';
+                    $oddsResponse = apiSportsRequest($endpoint, ['fixture' => $fixtureId]);
                     if (isset($oddsResponse['response']) && !empty($oddsResponse['response'])) {
                         $oddsData = $oddsResponse['response'][0];
                     }
                 } catch (Exception $e) {
-                    error_log('Failed to get odds for fixture ' . $fixtureId . ': ' . $e->getMessage());
+                    // Ignore odds errors - match will be shown without odds
                 }
                 
                 $match = convertFixtureToMatch($fixture, $oddsData);
@@ -743,7 +743,7 @@ try {
             }
         }
         
-        // Process rest of today's matches without odds
+        // Process rest of today's matches - without odds (will load on-demand)
         foreach ($todayWithoutOdds as $fixtureId => $fixture) {
             // Filter out non-live matches that have already passed
             if (shouldExcludeMatchByTime($fixture)) {
@@ -756,8 +756,7 @@ try {
             }
         }
         
-        // Process future matches WITHOUT odds (for speed)
-        // Odds will be loaded when user opens match detail page
+        // Process future matches - without odds (will load on-demand when user opens details)
         foreach ($futureFixtures as $fixtureId => $fixture) {
             // Filter out non-live matches that have already passed
             if (shouldExcludeMatchByTime($fixture)) {
