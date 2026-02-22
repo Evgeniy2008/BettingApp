@@ -46,22 +46,42 @@ function showMatchesSkeleton() {
   const root = document.getElementById("matches-list");
   if (!root) return;
   
-  const skeletonRows = Array(5).fill(0).map(() => `
-    <div class="match-row-skeleton">
-      <div class="match-info-skeleton">
-        <div class="skeleton-line skeleton-line-short"></div>
-        <div class="skeleton-line skeleton-line-medium"></div>
-        <div class="skeleton-line skeleton-line-short"></div>
+  const skeletonRows = Array(10).fill(0).map(() => `
+    <div class="match-card-digital match-card-skeleton">
+      <div class="match-card-header">
+        <div class="match-league-digital">
+          <div class="skeleton-line skeleton-line-short" style="width: 120px; height: 16px; margin-bottom: 8px;"></div>
+        </div>
+        <div class="skeleton-odd" style="width: 36px; height: 36px; border-radius: 10px;"></div>
       </div>
-      <div class="match-odds-skeleton">
-        ${Array(9).fill(0).map(() => '<div class="skeleton-odd"></div>').join('')}
+      <div class="match-teams-digital">
+        <div class="team-digital team-home">
+          <div class="skeleton-odd" style="width: 40px; height: 40px; border-radius: 50%;"></div>
+          <div class="skeleton-line skeleton-line-medium" style="width: 100px; height: 18px;"></div>
+        </div>
+        <div class="match-vs-digital">
+          <div class="skeleton-line skeleton-line-short" style="width: 30px; height: 14px;"></div>
+        </div>
+        <div class="team-digital team-away">
+          <div class="skeleton-line skeleton-line-medium" style="width: 100px; height: 18px;"></div>
+          <div class="skeleton-odd" style="width: 40px; height: 40px; border-radius: 50%;"></div>
+        </div>
+      </div>
+      <div class="match-odds-digital">
+        <div class="odds-buttons-inline">
+          ${Array(3).fill(0).map(() => '<div class="skeleton-odd" style="width: 70px; height: 40px; border-radius: 8px;"></div>').join('')}
+        </div>
       </div>
     </div>
   `).join('');
   
   root.innerHTML = `
-    <div class="matches-table">
-      <div class="matches-container">
+    <div class="matches-loading-container">
+      <div class="loading-spinner-wrapper">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading matches...</div>
+      </div>
+      <div class="matches-container-digital">
         ${skeletonRows}
       </div>
     </div>
@@ -237,10 +257,34 @@ async function loadMatches(forceRefresh = false) {
     const matchesWithUrl = matches.filter(m => m.detailUrl).length;
     console.log(`[App] Matches with detailUrl: ${matchesWithUrl}`);
 
-    // Sort leagues by match count (descending), but keep "all" first
+    // Sort leagues: "all" first, then top leagues, then by match count
+    const topLeagues = [
+      'premier league', 'premiership', 'англия премьер', 'английская премьер',
+      'la liga', 'испания ла лига', 'испанская лига',
+      'serie a', 'италия серия а', 'итальянская серия',
+      'bundesliga', 'германия бундеслига', 'немецкая бундеслига',
+      'ligue 1', 'франция лига 1', 'французская лига',
+      'champions league', 'лига чемпионов', 'uefa champions',
+      'europa league', 'лига европы', 'uefa europa'
+    ];
+    
     leagues = Array.from(leagueMap.values()).sort((a, b) => {
+      // "all" always first
       if (a.id === "all") return -1;
       if (b.id === "all") return 1;
+      
+      const aName = (a.name || '').toLowerCase();
+      const bName = (b.name || '').toLowerCase();
+      
+      // Check if league is in top leagues
+      const aIsTop = topLeagues.some(top => aName.includes(top));
+      const bIsTop = topLeagues.some(top => bName.includes(top));
+      
+      // Top leagues come first
+      if (aIsTop && !bIsTop) return -1;
+      if (!aIsTop && bIsTop) return 1;
+      
+      // If both are top or both are not, sort by match count
       return b.count - a.count;
     });
     
@@ -457,7 +501,8 @@ async function getMatchOdds(match) {
 // Filter matches to get only those with odds and load their odds data
 async function filterMatchesWithOdds(matches, targetCount) {
   const matchesWithOdds = [];
-  const maxChecks = Math.min(matches.length, targetCount * 3); // Check up to 3x target to find enough matches
+  // Check all provided matches to find enough with odds
+  const maxChecks = matches.length;
   
   console.log(`[Render] Filtering matches: checking up to ${maxChecks} matches to find ${targetCount} with odds`);
   
@@ -465,7 +510,7 @@ async function filterMatchesWithOdds(matches, targetCount) {
   const batchSize = 5;
   let checkedCount = 0;
   
-  for (let i = 0; i < matches.length && matchesWithOdds.length < targetCount && checkedCount < maxChecks; i += batchSize) {
+  for (let i = 0; i < matches.length && matchesWithOdds.length < targetCount; i += batchSize) {
     const batch = matches.slice(i, i + batchSize);
     const batchPromises = batch.map(async (match) => {
       checkedCount++;
@@ -556,14 +601,51 @@ async function renderMatches() {
     }
   }
 
-  // For all pages: filter matches to show only those with odds
-  // Calculate which matches to check based on current page
-  const startCheckIdx = (state.currentPage - 1) * state.matchesPerPage;
-  const endCheckIdx = startCheckIdx + (state.matchesPerPage * 2); // Check more to ensure we have enough
-  const matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
+  // Show loading indicator while filtering matches with odds
+  if (ms.length > 0) {
+    root.innerHTML = `
+      <div class="matches-loading-container">
+        <div class="loading-spinner-wrapper">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">Loading matches with odds...</div>
+        </div>
+      </div>
+    `;
+  }
   
-  const filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
-  console.log(`[Render] Page ${state.currentPage}: filtered to ${filteredMatches.length} matches with odds (from ${matchesToCheck.length} checked)`);
+  // For all pages: filter matches to show only those with odds
+  // For first page, check from the beginning until we find enough matches
+  // For other pages, check matches in the page range
+  let filteredMatches = [];
+  
+  if (state.currentPage === 1) {
+    // For first page, check matches from the beginning until we find 10 with odds
+    // Start with checking first 50 matches, but continue if needed
+    let startCheckIdx = 0;
+    let endCheckIdx = Math.min(ms.length, state.matchesPerPage * 5);
+    let matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
+    
+    filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
+    
+    // If we didn't find enough, check more matches
+    while (filteredMatches.length < state.matchesPerPage && endCheckIdx < ms.length) {
+      startCheckIdx = endCheckIdx;
+      endCheckIdx = Math.min(ms.length, endCheckIdx + state.matchesPerPage * 2);
+      const additionalMatches = ms.slice(startCheckIdx, endCheckIdx);
+      const additionalFiltered = await filterMatchesWithOdds(additionalMatches, state.matchesPerPage - filteredMatches.length);
+      filteredMatches = filteredMatches.concat(additionalFiltered);
+    }
+    
+    console.log(`[Render] Page ${state.currentPage}: filtered to ${filteredMatches.length} matches with odds (checked up to index ${endCheckIdx})`);
+  } else {
+    // For other pages, check matches in the page range
+    const startCheckIdx = (state.currentPage - 1) * state.matchesPerPage;
+    const endCheckIdx = Math.min(ms.length, startCheckIdx + (state.matchesPerPage * 3));
+    const matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
+    
+    filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
+    console.log(`[Render] Page ${state.currentPage}: filtered to ${filteredMatches.length} matches with odds (from ${matchesToCheck.length} checked)`);
+  }
 
   // Pagination - use filtered matches for current page
   const totalPages = Math.ceil(ms.length / state.matchesPerPage); // Total pages based on all matches
@@ -661,7 +743,8 @@ function renderMatchRow(match) {
     .sort((a, b) => b.odd - a.odd)[0];
 
   const isLive = match.isLive || false;
-  const isMatchFavorite = isFavorite('match', match.id);
+  const matchIdForFavorite = match.id || match.matchId || '';
+  const isMatchFavorite = isFavorite('match', matchIdForFavorite);
   
   const homeLogoHtml = match.homeLogo 
     ? `<img src="${match.homeLogo}" alt="${match.home}" class="team-logo-digital" onerror="this.style.display='none';">` 
@@ -716,7 +799,10 @@ function renderMatchRow(match) {
           <span class="league-name-digital">${match.leagueName}</span>
         </div>
         <button class="favorite-btn-digital ${isMatchFavorite ? 'favorite-btn-active' : ''}" 
-                onclick="event.stopPropagation(); toggleFavorite('match', '${match.id}');">
+                data-favorite-type="match" 
+                data-favorite-id="${matchIdForFavorite}"
+                type="button"
+                aria-label="Add to favorites">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="${isMatchFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
           </svg>
@@ -748,7 +834,7 @@ function renderMatchRow(match) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M5 12h14M12 5l7 7-7 7"/>
           </svg>
-          Все ставки
+          All bets
         </button>
       </div>
     </div>
@@ -1612,8 +1698,15 @@ function setupBetsFilters() {
   });
 }
 
-// Favorites functionality
+// Favorites functionality - simplified: just update localStorage and button state
 function toggleFavorite(type, id) {
+  if (!id) {
+    return;
+  }
+  
+  // Convert id to string for consistency
+  const idStr = String(id);
+  
   // Map type to correct key
   const keyMap = {
     'league': 'leagues',
@@ -1627,36 +1720,66 @@ function toggleFavorite(type, id) {
     state.favorites[key] = [];
   }
   
-  const index = state.favorites[key].indexOf(id);
+  const index = state.favorites[key].indexOf(idStr);
+  const wasFavorite = index > -1;
   
-  if (index > -1) {
+  if (wasFavorite) {
     state.favorites[key].splice(index, 1);
   } else {
-    state.favorites[key].push(id);
+    state.favorites[key].push(idStr);
   }
   
-  // Save to localStorage
+  // Save to localStorage immediately
   const storageKey = type === 'match' ? 'favoriteMatches' : 'favoriteLeagues';
   localStorage.setItem(storageKey, JSON.stringify(state.favorites[key]));
   
-  // Re-render
-  if (type === 'league') {
-    renderLeagues();
-    if (state.activeTab === 'favorites' && state.favoriteTab === 'leagues') {
-      renderFavoritesLeagues();
+  // Update button state directly in DOM (fast, no re-render needed)
+  if (type === 'match') {
+    const button = document.querySelector(`[data-favorite-type="match"][data-favorite-id="${idStr}"]`);
+    if (button) {
+      if (wasFavorite) {
+        button.classList.remove('favorite-btn-active');
+        const svg = button.querySelector('svg');
+        if (svg) svg.setAttribute('fill', 'none');
+      } else {
+        button.classList.add('favorite-btn-active');
+        const svg = button.querySelector('svg');
+        if (svg) svg.setAttribute('fill', 'currentColor');
+      }
     }
-  } else if (type === 'match') {
-    renderMatches();
+    
+    // Update favorites page if it's open
     if (state.activeTab === 'favorites' && state.favoriteTab === 'matches') {
       renderFavoritesMatches();
+    }
+  } else if (type === 'league') {
+    const button = document.querySelector(`[data-favorite-type="league"][data-favorite-id="${idStr}"]`);
+    if (button) {
+      if (wasFavorite) {
+        button.classList.remove('favorite-btn-active');
+        const svg = button.querySelector('svg');
+        if (svg) svg.setAttribute('fill', 'none');
+      } else {
+        button.classList.add('favorite-btn-active');
+        const svg = button.querySelector('svg');
+        if (svg) svg.setAttribute('fill', 'currentColor');
+      }
+    }
+    
+    // Update favorites page if it's open
+    if (state.activeTab === 'favorites' && state.favoriteTab === 'leagues') {
+      renderFavoritesLeagues();
     }
   }
 }
 
 function isFavorite(type, id) {
-  if (!state.favorites) {
+  if (!state.favorites || !id) {
     return false;
   }
+  
+  // Convert id to string for consistency
+  const idStr = String(id);
   
   // Map type to correct key
   const keyMap = {
@@ -1671,7 +1794,8 @@ function isFavorite(type, id) {
     return false;
   }
   
-  return favoritesArray.includes(id);
+  // Check if id is in favorites (convert all to strings for comparison)
+  return favoritesArray.map(f => String(f)).includes(idStr);
 }
 
 function renderFavoritesLeagues() {
@@ -1942,6 +2066,34 @@ function init() {
   const matchesListEl = document.getElementById("matches-list");
   if (matchesListEl) {
     matchesListEl.addEventListener("click", (e) => {
+      // Check if clicking on favorite button - handle it directly
+      const favoriteBtn = e.target.closest(".favorite-btn-digital, .favorite-btn-match, .favorite-btn");
+      if (favoriteBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        // Get data attributes
+        let favoriteType = favoriteBtn.getAttribute("data-favorite-type");
+        let favoriteId = favoriteBtn.getAttribute("data-favorite-id");
+        
+        // Fallback: try to get from parent match card
+        if (!favoriteId || !favoriteType) {
+          const matchCard = favoriteBtn.closest(".match-card-digital, .match-row");
+          if (matchCard) {
+            const matchId = matchCard.getAttribute("data-match-id");
+            if (matchId) {
+              favoriteType = favoriteType || 'match';
+              favoriteId = favoriteId || matchId;
+            }
+          }
+        }
+        
+        if (favoriteType && favoriteId && typeof window.toggleFavorite === 'function') {
+          window.toggleFavorite(favoriteType, favoriteId);
+        }
+        return;
+      }
+      
       // First try to handle odds click
       // Check if clicking on outcome button first
       if (e.target.closest(".outcome-btn, .outcome-cell")) {
@@ -1950,8 +2102,8 @@ function init() {
         if (handled) return;
       }
       
-      // Don't open modal if clicking on action button, favorite button, or other interactive elements
-      if (e.target.closest(".go-to-all-bets-btn, .go-to-all-bets-btn-digital, .match-actions, .match-actions-mobile, .favorite-btn-digital, .favorite-btn-match, .odds-group, .odds-buttons")) {
+      // Don't open modal if clicking on action button or other interactive elements
+      if (e.target.closest(".go-to-all-bets-btn, .go-to-all-bets-btn-digital, .match-actions, .match-actions-mobile, .odds-group, .odds-buttons")) {
         return;
       }
       
