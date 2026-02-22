@@ -280,7 +280,7 @@ const state = {
   slip: [],
   stake: 0,
   currentPage: 1,
-  matchesPerPage: 20,
+  matchesPerPage: 10,
   searchQuery: "",
   betsFilter: "all", // Filter for bets page: all, pending, active, won, lost, cancelled
   favorites: (function() {
@@ -329,7 +329,6 @@ function renderLeagues() {
             <span class="league-name">${l.name}</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
-            ${l.count > 0 ? `<span class="pill">${l.count}</span>` : ""}
             <button class="favorite-btn ${isFavorite ? 'favorite-btn-active' : ''}" data-favorite-type="league" data-favorite-id="${l.id}" onclick="event.stopPropagation(); toggleFavorite('league', '${l.id}');">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
@@ -383,7 +382,79 @@ async function checkMatchHasOdds(match) {
   }
 }
 
-// Filter matches to get only those with odds (for first page)
+// Get match odds (Home, Draw, Away) from API
+async function getMatchOdds(match) {
+  if (!match.matchId && !match.id) {
+    return null;
+  }
+  
+  const fixtureId = match.matchId || match.id;
+  
+  try {
+    const url = `${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache'
+      }
+    });
+    
+    if (!res.ok) {
+      return null;
+    }
+    
+    const data = await res.json();
+    if (!data.ok || !data.odds || !Array.isArray(data.odds) || data.odds.length === 0) {
+      return null;
+    }
+    
+    // Find Home, Draw, Away odds from all bookmakers
+    let homeOdd = null;
+    let drawOdd = null;
+    let awayOdd = null;
+    
+    data.odds.forEach(bookmaker => {
+      if (!bookmaker.bets || !Array.isArray(bookmaker.bets)) return;
+      
+      bookmaker.bets.forEach(bet => {
+        // Look for "Fulltime Result" or "1x2" bet type
+        const betName = (bet.name || '').toLowerCase();
+        if (betName.includes('fulltime result') || betName.includes('1x2') || betName === '1x2') {
+          if (!bet.values || !Array.isArray(bet.values)) return;
+          
+          bet.values.forEach(value => {
+            const label = String(value.value || '').trim();
+            const odd = parseFloat(value.odd) || 0;
+            
+            if (odd > 0) {
+              if (label === 'Home' || label === '1') {
+                if (!homeOdd || odd > homeOdd) homeOdd = odd;
+              } else if (label === 'Draw' || label === 'X') {
+                if (!drawOdd || odd > drawOdd) drawOdd = odd;
+              } else if (label === 'Away' || label === '2') {
+                if (!awayOdd || odd > awayOdd) awayOdd = odd;
+              }
+            }
+          });
+        }
+      });
+    });
+    
+    return {
+      hasOdds: homeOdd !== null || drawOdd !== null || awayOdd !== null,
+      home: homeOdd,
+      draw: drawOdd,
+      away: awayOdd
+    };
+  } catch (error) {
+    console.warn(`[Render] Error getting odds for match ${fixtureId}:`, error);
+    return null;
+  }
+}
+
+// Filter matches to get only those with odds and load their odds data
 async function filterMatchesWithOdds(matches, targetCount) {
   const matchesWithOdds = [];
   const maxChecks = Math.min(matches.length, targetCount * 3); // Check up to 3x target to find enough matches
@@ -398,8 +469,17 @@ async function filterMatchesWithOdds(matches, targetCount) {
     const batch = matches.slice(i, i + batchSize);
     const batchPromises = batch.map(async (match) => {
       checkedCount++;
-      const hasOdds = await checkMatchHasOdds(match);
-      return hasOdds ? match : null;
+      const oddsData = await getMatchOdds(match);
+      if (oddsData && oddsData.hasOdds) {
+        // Add odds data to match object
+        match.loadedOdds = {
+          home: oddsData.home,
+          draw: oddsData.draw,
+          away: oddsData.away
+        };
+        return match;
+      }
+      return null;
     });
     
     const batchResults = await Promise.all(batchPromises);
@@ -476,20 +556,20 @@ async function renderMatches() {
     }
   }
 
-  // For first page only: filter matches to show only those with odds
-  let filteredMatches = ms;
-  if (state.currentPage === 1) {
-    filteredMatches = await filterMatchesWithOdds(ms, state.matchesPerPage);
-    console.log(`[Render] First page: filtered to ${filteredMatches.length} matches with odds (from ${ms.length} total)`);
-  }
-
-  // Pagination
-  const totalPages = Math.ceil(filteredMatches.length / state.matchesPerPage);
-  const startIdx = (state.currentPage - 1) * state.matchesPerPage;
-  const endIdx = startIdx + state.matchesPerPage;
-  const paginatedMatches = filteredMatches.slice(startIdx, endIdx);
+  // For all pages: filter matches to show only those with odds
+  // Calculate which matches to check based on current page
+  const startCheckIdx = (state.currentPage - 1) * state.matchesPerPage;
+  const endCheckIdx = startCheckIdx + (state.matchesPerPage * 2); // Check more to ensure we have enough
+  const matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
   
-  console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (${startIdx}-${endIdx} of ${filteredMatches.length})`);
+  const filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
+  console.log(`[Render] Page ${state.currentPage}: filtered to ${filteredMatches.length} matches with odds (from ${matchesToCheck.length} checked)`);
+
+  // Pagination - use filtered matches for current page
+  const totalPages = Math.ceil(ms.length / state.matchesPerPage); // Total pages based on all matches
+  const paginatedMatches = filteredMatches.slice(0, state.matchesPerPage); // Take first 10 from filtered
+  
+  console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (of ${filteredMatches.length} filtered, from ${ms.length} total)`);
   console.log(`[Render] Paginated matches:`, paginatedMatches.map(m => `${m.home} vs ${m.away} (LIVE: ${m.isLive})`));
 
   root.innerHTML = `
@@ -511,42 +591,45 @@ async function renderMatches() {
 }
 
 function renderMatchRow(match) {
-  // Use outcomes from API - same data structure as in match detail modal
-  // PHP API already selects best (highest) odds from all bookmakers
-  const outcomes = match.allOutcomes || match.outcomes || [];
+  // Use loaded odds from API if available (from filterMatchesWithOdds)
+  // Otherwise fall back to outcomes from match data
+  let homeOdd = null;
+  let drawOdd = null;
+  let awayOdd = null;
   
-  // Find best odds for 1X2 - PHP already filtered to best odds, but ensure we get the highest
-  // Filter all 1X2 outcomes and select the best (highest odd) for each outcome type
-  const outcomes1X2 = outcomes.filter((o) => o.type === "1x2");
-  
-  // Find best (highest) odd for each: Home (1), Draw (X), Away (2)
-  let outcome1X2 = null;
-  let outcomeX = null;
-  let outcome2 = null;
-  
-  outcomes1X2.forEach((o) => {
-    const label = String(o.label || '').trim();
-    const odd = parseFloat(o.odd) || 0;
+  if (match.loadedOdds) {
+    // Use odds loaded from API
+    homeOdd = match.loadedOdds.home;
+    drawOdd = match.loadedOdds.draw;
+    awayOdd = match.loadedOdds.away;
+  } else {
+    // Fallback to outcomes from match data
+    const outcomes = match.allOutcomes || match.outcomes || [];
+    const outcomes1X2 = outcomes.filter((o) => o.type === "1x2");
     
-    // Match Home/1
-    if ((label === "1" || label === "Home") && odd > 0) {
-      if (!outcome1X2 || odd > outcome1X2.odd) {
-        outcome1X2 = { ...o, label: "1", odd: odd };
+    outcomes1X2.forEach((o) => {
+      const label = String(o.label || '').trim();
+      const odd = parseFloat(o.odd) || 0;
+      
+      if (odd > 0) {
+        if (label === "1" || label === "Home") {
+          if (!homeOdd || odd > homeOdd) homeOdd = odd;
+        } else if (label === "X" || label === "Draw") {
+          if (!drawOdd || odd > drawOdd) drawOdd = odd;
+        } else if (label === "2" || label === "Away") {
+          if (!awayOdd || odd > awayOdd) awayOdd = odd;
+        }
       }
-    }
-    // Match Draw/X
-    else if ((label === "X" || label === "Draw") && odd > 0) {
-      if (!outcomeX || odd > outcomeX.odd) {
-        outcomeX = { ...o, label: "X", odd: odd };
-      }
-    }
-    // Match Away/2
-    else if ((label === "2" || label === "Away") && odd > 0) {
-      if (!outcome2 || odd > outcome2.odd) {
-        outcome2 = { ...o, label: "2", odd: odd };
-      }
-    }
-  });
+    });
+  }
+  
+  // Create outcome objects for rendering
+  const outcome1X2 = homeOdd ? { label: "1", odd: homeOdd } : null;
+  const outcomeX = drawOdd ? { label: "X", odd: drawOdd } : null;
+  const outcome2 = awayOdd ? { label: "2", odd: awayOdd } : null;
+  
+  // Keep outcomes for totals and foras (if needed)
+  const outcomes = match.allOutcomes || match.outcomes || [];
   
   // Find best total over/under (most common: 2.5)
   const totalOver = outcomes
@@ -603,18 +686,18 @@ function renderMatchRow(match) {
     : `<div class="match-time-digital">${match.time || "TBD"}</div>`;
 
   // Render only three main odds: Home, Draw, Away (1, X, 2)
-  // Use the same data structure as in match detail modal
+  // Use loaded odds with proper labels
   const oddsButtons = [];
   
-  // Add 1X2 odds only (Home, Draw, Away)
-  if (outcome1X2 && outcome1X2.odd > 0) {
-    oddsButtons.push(renderOutcomeButton(match, "1", outcome1X2.odd, outcome1X2.label || "1"));
+  // Add 1X2 odds with proper labels
+  if (homeOdd && homeOdd > 0) {
+    oddsButtons.push(renderOutcomeButton(match, "1", homeOdd, "Home"));
   }
-  if (outcomeX && outcomeX.odd > 0) {
-    oddsButtons.push(renderOutcomeButton(match, "X", outcomeX.odd, outcomeX.label || "X"));
+  if (drawOdd && drawOdd > 0) {
+    oddsButtons.push(renderOutcomeButton(match, "X", drawOdd, "Draw"));
   }
-  if (outcome2 && outcome2.odd > 0) {
-    oddsButtons.push(renderOutcomeButton(match, "2", outcome2.odd, outcome2.label || "2"));
+  if (awayOdd && awayOdd > 0) {
+    oddsButtons.push(renderOutcomeButton(match, "2", awayOdd, "Away"));
   }
   
   const oddsRow = `
@@ -1747,7 +1830,6 @@ function renderLeaguesModal() {
                 <span class="leagues-modal-item-name">${l.name}</span>
               </div>
               <div style="display: flex; align-items: center; gap: 8px;">
-                ${l.count > 0 ? `<span class="pill">${l.count}</span>` : ''}
                 <button class="favorite-btn ${isFavorite ? 'favorite-btn-active' : ''}" 
                         onclick="event.stopPropagation(); toggleFavorite('league', '${l.id}'); renderLeaguesModal();">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
