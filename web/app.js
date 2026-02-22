@@ -38,6 +38,9 @@ const SNAPSHOT_FILE = "ParseInfoNew.html";
 let leagues = [{ id: "all", country: "🌐", name: "All leagues" }];
 let matches = []; // Global matches array - will be updated on each load
 
+// Cache for odds check results (to avoid checking same match multiple times)
+const oddsCheckCache = new Map();
+
 // Show skeleton loading for matches
 function showMatchesSkeleton() {
   const root = document.getElementById("matches-list");
@@ -250,6 +253,9 @@ async function loadMatches(forceRefresh = false) {
     // Reset pagination to first page when new data is loaded
     state.currentPage = 1;
     
+    // Clear odds check cache when new matches are loaded
+    oddsCheckCache.clear();
+    
     // Store timestamp of last update
     window.lastUpdateTime = new Date().toISOString();
     
@@ -335,9 +341,86 @@ function renderLeagues() {
       }
     )
     .join("");
+  }
+
+// Check if match has odds available
+async function checkMatchHasOdds(match) {
+  if (!match.matchId && !match.id) {
+    return false;
+  }
+  
+  const fixtureId = match.matchId || match.id;
+  
+  // Check cache first
+  if (oddsCheckCache.has(fixtureId)) {
+    return oddsCheckCache.get(fixtureId);
+  }
+  
+  try {
+    const url = `${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache'
+      }
+    });
+    
+    if (!res.ok) {
+      oddsCheckCache.set(fixtureId, false);
+      return false;
+    }
+    
+    const data = await res.json();
+    const hasOdds = data.ok && data.odds && Array.isArray(data.odds) && data.odds.length > 0;
+    oddsCheckCache.set(fixtureId, hasOdds);
+    return hasOdds;
+  } catch (error) {
+    console.warn(`[Render] Error checking odds for match ${fixtureId}:`, error);
+    oddsCheckCache.set(fixtureId, false);
+    return false;
+  }
 }
 
-function renderMatches() {
+// Filter matches to get only those with odds (for first page)
+async function filterMatchesWithOdds(matches, targetCount) {
+  const matchesWithOdds = [];
+  const maxChecks = Math.min(matches.length, targetCount * 3); // Check up to 3x target to find enough matches
+  
+  console.log(`[Render] Filtering matches: checking up to ${maxChecks} matches to find ${targetCount} with odds`);
+  
+  // Check matches in batches for better performance
+  const batchSize = 5;
+  let checkedCount = 0;
+  
+  for (let i = 0; i < matches.length && matchesWithOdds.length < targetCount && checkedCount < maxChecks; i += batchSize) {
+    const batch = matches.slice(i, i + batchSize);
+    const batchPromises = batch.map(async (match) => {
+      checkedCount++;
+      const hasOdds = await checkMatchHasOdds(match);
+      return hasOdds ? match : null;
+    });
+    
+    const batchResults = await Promise.all(batchPromises);
+    
+    for (const result of batchResults) {
+      if (result && matchesWithOdds.length < targetCount) {
+        matchesWithOdds.push(result);
+      }
+    }
+    
+    // If we found enough matches, stop checking
+    if (matchesWithOdds.length >= targetCount) {
+      break;
+    }
+  }
+  
+  console.log(`[Render] Filtered ${matchesWithOdds.length} matches with odds (checked ${checkedCount} matches)`);
+  return matchesWithOdds;
+}
+
+async function renderMatches() {
   const root = document.getElementById("matches-list");
   
   console.log(`[Render] Total matches: ${matches.length}`);
@@ -393,13 +476,20 @@ function renderMatches() {
     }
   }
 
+  // For first page only: filter matches to show only those with odds
+  let filteredMatches = ms;
+  if (state.currentPage === 1) {
+    filteredMatches = await filterMatchesWithOdds(ms, state.matchesPerPage);
+    console.log(`[Render] First page: filtered to ${filteredMatches.length} matches with odds (from ${ms.length} total)`);
+  }
+
   // Pagination
-  const totalPages = Math.ceil(ms.length / state.matchesPerPage);
+  const totalPages = Math.ceil(filteredMatches.length / state.matchesPerPage);
   const startIdx = (state.currentPage - 1) * state.matchesPerPage;
   const endIdx = startIdx + state.matchesPerPage;
-  const paginatedMatches = ms.slice(startIdx, endIdx);
+  const paginatedMatches = filteredMatches.slice(startIdx, endIdx);
   
-  console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (${startIdx}-${endIdx} of ${ms.length})`);
+  console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (${startIdx}-${endIdx} of ${filteredMatches.length})`);
   console.log(`[Render] Paginated matches:`, paginatedMatches.map(m => `${m.home} vs ${m.away} (LIVE: ${m.isLive})`));
 
   root.innerHTML = `
