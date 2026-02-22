@@ -276,7 +276,22 @@ const state = {
   currentPage: 1,
   matchesPerPage: 20,
   searchQuery: "",
-  betsFilter: "all" // Filter for bets page: all, pending, active, won, lost, cancelled
+  betsFilter: "all", // Filter for bets page: all, pending, active, won, lost, cancelled
+  favorites: (function() {
+    try {
+      return {
+        leagues: JSON.parse(localStorage.getItem('favoriteLeagues') || '[]'),
+        matches: JSON.parse(localStorage.getItem('favoriteMatches') || '[]')
+      };
+    } catch (e) {
+      console.error('Error loading favorites from localStorage:', e);
+      return {
+        leagues: [],
+        matches: []
+      };
+    }
+  })(),
+  favoriteTab: "leagues" // Current tab in favorites page
 };
 
 function formatOdd(n) {
@@ -295,19 +310,29 @@ function renderLeagues() {
 
   root.innerHTML = filtered
     .map(
-      (l) => `
-      <button class="league-item ${
-        state.activeLeagueId === l.id ? "league-item-active" : ""
-      }" data-league="${l.id}">
-        <div class="league-main">
-          ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
-            <span class="league-flag" style="display:none;">${l.country || "🏳️"}</span>` : 
-            `<span class="league-flag">${l.country || "🏳️"}</span>`}
-          <span class="league-name">${l.name}</span>
-        </div>
-        ${l.count > 0 ? `<span class="pill">${l.count}</span>` : ""}
-      </button>
-    `
+      (l) => {
+        const isFavorite = state.favorites.leagues.includes(l.id);
+        return `
+        <button class="league-item ${
+          state.activeLeagueId === l.id ? "league-item-active" : ""
+        }" data-league="${l.id}">
+          <div class="league-main">
+            ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+              <span class="league-flag" style="display:none;">${l.country || "🏳️"}</span>` : 
+              `<span class="league-flag">${l.country || "🏳️"}</span>`}
+            <span class="league-name">${l.name}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            ${l.count > 0 ? `<span class="pill">${l.count}</span>` : ""}
+            <button class="favorite-btn ${isFavorite ? 'favorite-btn-active' : ''}" data-favorite-type="league" data-favorite-id="${l.id}" onclick="event.stopPropagation(); toggleFavorite('league', '${l.id}');">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+              </svg>
+            </button>
+          </div>
+        </button>
+      `;
+      }
     )
     .join("");
 }
@@ -396,53 +421,162 @@ function renderMatches() {
 }
 
 function renderMatchRow(match) {
-  const outcomes = match.allOutcomes || [];
+  // Use outcomes from API - same data structure as in match detail modal
+  // PHP API already selects best (highest) odds from all bookmakers
+  const outcomes = match.allOutcomes || match.outcomes || [];
   
-  // Group outcomes by type
-  const outcome1X2 = outcomes.find((o) => o.label === "1" && o.type === "1x2");
-  const outcomeX = outcomes.find((o) => o.label === "X" && o.type === "1x2");
-  const outcome2 = outcomes.find((o) => o.label === "2" && o.type === "1x2");
-  const totalOver = outcomes.find((o) => o.type === "total" && (o.label === "Тотал Б" || o.label.includes("Total O") || o.label.includes("Over")));
-  const totalValue = totalOver?.value || outcomes.find((o) => o.type === "total")?.value || "";
-  const totalUnder = outcomes.find((o) => o.type === "total" && (o.label === "Тотал М" || o.label.includes("Total U") || o.label.includes("Under")));
-  const fora1 = outcomes.find((o) => o.type === "fora" && (o.label === "Фора 1" || o.label.includes("Handicap 1")));
-  const foraValue = fora1?.value || outcomes.find((o) => o.type === "fora")?.value || "";
-  const fora2 = outcomes.find((o) => o.type === "fora" && (o.label === "Фора 2" || o.label.includes("Handicap 2")));
+  // Find best odds for 1X2 - PHP already filtered to best odds, but ensure we get the highest
+  // Filter all 1X2 outcomes and select the best (highest odd) for each outcome type
+  const outcomes1X2 = outcomes.filter((o) => o.type === "1x2");
+  
+  // Find best (highest) odd for each: Home (1), Draw (X), Away (2)
+  let outcome1X2 = null;
+  let outcomeX = null;
+  let outcome2 = null;
+  
+  outcomes1X2.forEach((o) => {
+    const label = String(o.label || '').trim();
+    const odd = parseFloat(o.odd) || 0;
+    
+    // Match Home/1
+    if ((label === "1" || label === "Home") && odd > 0) {
+      if (!outcome1X2 || odd > outcome1X2.odd) {
+        outcome1X2 = { ...o, label: "1", odd: odd };
+      }
+    }
+    // Match Draw/X
+    else if ((label === "X" || label === "Draw") && odd > 0) {
+      if (!outcomeX || odd > outcomeX.odd) {
+        outcomeX = { ...o, label: "X", odd: odd };
+      }
+    }
+    // Match Away/2
+    else if ((label === "2" || label === "Away") && odd > 0) {
+      if (!outcome2 || odd > outcome2.odd) {
+        outcome2 = { ...o, label: "2", odd: odd };
+      }
+    }
+  });
+  
+  // Find best total over/under (most common: 2.5)
+  const totalOver = outcomes
+    .filter((o) => o.type === "total" && (o.label === "Тотал Б" || o.label.includes("Total O") || o.label.includes("Over")))
+    .sort((a, b) => {
+      const aVal = parseFloat(a.value || 0);
+      const bVal = parseFloat(b.value || 0);
+      if (Math.abs(aVal - 2.5) < Math.abs(bVal - 2.5)) return -1;
+      if (Math.abs(aVal - 2.5) > Math.abs(bVal - 2.5)) return 1;
+      return b.odd - a.odd;
+    })[0];
+  const totalValue = totalOver?.value || "";
+  const totalUnder = outcomes
+    .filter((o) => o.type === "total" && (o.label === "Тотал М" || o.label.includes("Total U") || o.label.includes("Under")) && o.value === totalValue)
+    .sort((a, b) => b.odd - a.odd)[0];
+  
+  // Find best fora (most common: 0 or closest to 0)
+  const fora1 = outcomes
+    .filter((o) => o.type === "fora" && (o.label === "Фора 1" || o.label.includes("Handicap 1")))
+    .sort((a, b) => {
+      const aVal = Math.abs(parseFloat(a.value || 0));
+      const bVal = Math.abs(parseFloat(b.value || 0));
+      if (aVal !== bVal) return aVal - bVal;
+      return b.odd - a.odd;
+    })[0];
+  const foraValue = fora1?.value || "";
+  const fora2 = outcomes
+    .filter((o) => o.type === "fora" && (o.label === "Фора 2" || o.label.includes("Handicap 2")) && o.value === foraValue)
+    .sort((a, b) => b.odd - a.odd)[0];
 
   const isLive = match.isLive || false;
-  const liveBadge = isLive ? '<span class="live-badge">LIVE</span>' : '';
-  const scoreDisplay = isLive && match.score 
-    ? `<div class="match-score">${match.score.home} : ${match.score.away}</div>` 
-    : '';
-  const liveTimeDisplay = isLive && match.liveTime 
-    ? `<span class="live-time-highlight">${match.liveTime}${match.livePeriod ? ' • ' + match.livePeriod : ''}</span>` 
-    : `<span class="pill">${match.time || "TBD"}</span>`;
-
+  const isMatchFavorite = isFavorite('match', match.id);
+  
   const homeLogoHtml = match.homeLogo 
-    ? `<img src="${match.homeLogo}" alt="${match.home}" class="team-logo" onerror="this.style.display='none';">` 
-    : '';
+    ? `<img src="${match.homeLogo}" alt="${match.home}" class="team-logo-digital" onerror="this.style.display='none';">` 
+    : '<div class="team-logo-placeholder"></div>';
   const awayLogoHtml = match.awayLogo 
-    ? `<img src="${match.awayLogo}" alt="${match.away}" class="team-logo" onerror="this.style.display='none';">` 
-    : '';
+    ? `<img src="${match.awayLogo}" alt="${match.away}" class="team-logo-digital" onerror="this.style.display='none';">` 
+    : '<div class="team-logo-placeholder"></div>';
 
+  const scoreDisplay = isLive && match.score 
+    ? `<div class="match-score-digital">
+        <span class="score-value">${match.score.home}</span>
+        <span class="score-separator">:</span>
+        <span class="score-value">${match.score.away}</span>
+      </div>` 
+    : '';
+  
+  const liveTimeDisplay = isLive && match.liveTime 
+    ? `<div class="live-time-digital">
+        <span class="live-dot"></span>
+        <span class="live-text">${match.liveTime}${match.livePeriod ? ' • ' + match.livePeriod : ''}</span>
+      </div>` 
+    : `<div class="match-time-digital">${match.time || "TBD"}</div>`;
+
+  // Render only three main odds: Home, Draw, Away (1, X, 2)
+  // Use the same data structure as in match detail modal
+  const oddsButtons = [];
+  
+  // Add 1X2 odds only (Home, Draw, Away)
+  if (outcome1X2 && outcome1X2.odd > 0) {
+    oddsButtons.push(renderOutcomeButton(match, "1", outcome1X2.odd, outcome1X2.label || "1"));
+  }
+  if (outcomeX && outcomeX.odd > 0) {
+    oddsButtons.push(renderOutcomeButton(match, "X", outcomeX.odd, outcomeX.label || "X"));
+  }
+  if (outcome2 && outcome2.odd > 0) {
+    oddsButtons.push(renderOutcomeButton(match, "2", outcome2.odd, outcome2.label || "2"));
+  }
+  
+  const oddsRow = `
+    <div class="match-odds-digital">
+      <div class="odds-buttons-inline">
+        ${oddsButtons.join('')}
+      </div>
+    </div>
+  `;
+  
   return `
-    <div class="match-row ${isLive ? 'match-row-live' : ''}" data-match-id="${match.id}">
-      <div class="match-info">
-        <div class="match-league">${liveBadge} ${match.leagueName}</div>
-        <div class="match-title">
-          ${homeLogoHtml}
-          <span class="team-name">${match.home}</span>
-          <span style="opacity:.7">vs</span>
-          <span class="team-name">${match.away}</span>
-          ${awayLogoHtml}
+    <div class="match-card-digital ${isLive ? 'match-card-live' : ''}" data-match-id="${match.id}">
+      <div class="match-card-header">
+        <div class="match-league-digital">
+          ${isLive ? '<span class="live-badge-digital"><span class="live-pulse"></span>LIVE</span>' : ''}
+          <span class="league-name-digital">${match.leagueName}</span>
         </div>
-        ${scoreDisplay}
-        <div class="match-time">
-          ${liveTimeDisplay}
+        <button class="favorite-btn-digital ${isMatchFavorite ? 'favorite-btn-active' : ''}" 
+                onclick="event.stopPropagation(); toggleFavorite('match', '${match.id}');">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="${isMatchFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="match-teams-digital">
+        <div class="team-digital team-home">
+          ${homeLogoHtml}
+          <div class="team-name-digital">${match.home}</div>
+        </div>
+        <div class="match-vs-digital">
+          ${scoreDisplay || '<span class="vs-text">VS</span>'}
+        </div>
+        <div class="team-digital team-away">
+          ${awayLogoHtml}
+          <div class="team-name-digital">${match.away}</div>
         </div>
       </div>
-      <div class="match-actions">
-        <button class="go-to-all-bets-btn" data-match-id="${match.id}">Go to all bets</button>
+      
+      <div class="match-time-digital-wrapper">
+        ${liveTimeDisplay}
+      </div>
+      
+      ${oddsRow}
+      
+      <div class="match-actions-digital">
+        <button class="go-to-all-bets-btn-digital" data-match-id="${match.id}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+          Все ставки
+        </button>
       </div>
     </div>
   `;
@@ -471,17 +605,20 @@ function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null, value 
     }
   );
   
-  // Map outcomeKey to display label for mobile
+  // Map outcomeKey to display label for mobile (short version)
   const labelMap = {
     "1": "1",
     "X": "X",
     "2": "2",
-    "total_over": "O",
-    "total_under": "U",
+    "total_over": "Б",
+    "total_under": "М",
     "fora_one": "1",
     "fora_two": "2"
   };
-  const mobileLabel = labelMap[outcomeKey] || label;
+  const mobileLabel = labelMap[outcomeKey] || label.substring(0, 1);
+  
+  // Use original label from API (displayLabel parameter)
+  const buttonLabel = displayLabel || label;
   
   return `
     <div class="outcome-wrapper">
@@ -492,6 +629,8 @@ function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null, value 
         data-outcome-key="${outcomeKey}"
         data-odd="${odd}"
         ${value ? `data-value="${value}"` : ""}
+        data-label="${buttonLabel}"
+        title="${buttonLabel}${value ? ` (${value})` : ''}"
       >
         <div class="outcome-value">${formatOdd(odd)}</div>
       </button>
@@ -852,6 +991,15 @@ function switchTab(tabName) {
     loadBets();
     // Also check and settle bets when switching to bets tab
     checkAndSettleBets();
+  }
+  
+  // Load favorites when switching to favorites tab
+  if (tabName === "favorites") {
+    if (state.favoriteTab === "leagues") {
+      renderFavoritesLeagues();
+    } else {
+      renderFavoritesMatches();
+    }
   }
   
   // Close betslip on mobile when switching tabs (except when opening betslip or if betslip is being toggled)
@@ -1291,6 +1439,243 @@ function setupBetsFilters() {
   });
 }
 
+// Favorites functionality
+function toggleFavorite(type, id) {
+  // Map type to correct key
+  const keyMap = {
+    'league': 'leagues',
+    'match': 'matches'
+  };
+  
+  const key = keyMap[type] || (type + 's');
+  const favorites = state.favorites[key];
+  
+  if (!Array.isArray(favorites)) {
+    state.favorites[key] = [];
+  }
+  
+  const index = state.favorites[key].indexOf(id);
+  
+  if (index > -1) {
+    state.favorites[key].splice(index, 1);
+  } else {
+    state.favorites[key].push(id);
+  }
+  
+  // Save to localStorage
+  const storageKey = type === 'match' ? 'favoriteMatches' : 'favoriteLeagues';
+  localStorage.setItem(storageKey, JSON.stringify(state.favorites[key]));
+  
+  // Re-render
+  if (type === 'league') {
+    renderLeagues();
+    if (state.activeTab === 'favorites' && state.favoriteTab === 'leagues') {
+      renderFavoritesLeagues();
+    }
+  } else if (type === 'match') {
+    renderMatches();
+    if (state.activeTab === 'favorites' && state.favoriteTab === 'matches') {
+      renderFavoritesMatches();
+    }
+  }
+}
+
+function isFavorite(type, id) {
+  if (!state.favorites) {
+    return false;
+  }
+  
+  // Map type to correct key
+  const keyMap = {
+    'league': 'leagues',
+    'match': 'matches'
+  };
+  
+  const key = keyMap[type] || (type + 's');
+  const favoritesArray = state.favorites[key];
+  
+  if (!Array.isArray(favoritesArray)) {
+    return false;
+  }
+  
+  return favoritesArray.includes(id);
+}
+
+function renderFavoritesLeagues() {
+  const root = document.getElementById("favorites-leagues-list");
+  if (!root) return;
+  
+  const favoriteLeagues = leagues.filter(l => state.favorites.leagues.includes(l.id));
+  
+  if (favoriteLeagues.length === 0) {
+    root.innerHTML = '';
+    document.getElementById("favorites-empty").style.display = 'block';
+    return;
+  }
+  
+  document.getElementById("favorites-empty").style.display = 'none';
+  
+  root.innerHTML = favoriteLeagues.map(l => `
+    <div class="favorite-item">
+      <div class="favorite-item-main">
+        ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo" onerror="this.style.display='none';">` : ''}
+        <div>
+          <div class="favorite-item-name">${l.name}</div>
+          <div class="favorite-item-meta">${l.count || 0} matches</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="favorite-btn favorite-btn-active" onclick="toggleFavorite('league', '${l.id}');">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+        </button>
+        <button class="go-to-all-bets-btn" onclick="state.activeLeagueId = '${l.id}'; switchTab('sportsbook'); renderLeagues(); renderMatches();">View</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderFavoritesMatches() {
+  const root = document.getElementById("favorites-matches-list");
+  if (!root) return;
+  
+  const favoriteMatches = matches.filter(m => state.favorites.matches.includes(m.id));
+  
+  if (favoriteMatches.length === 0) {
+    root.innerHTML = '';
+    document.getElementById("favorites-empty").style.display = 'block';
+    return;
+  }
+  
+  document.getElementById("favorites-empty").style.display = 'none';
+  
+  root.innerHTML = favoriteMatches.map(m => {
+    const isLive = m.isLive || false;
+    const liveBadge = isLive ? '<span class="live-badge">LIVE</span>' : '';
+    return `
+      <div class="favorite-item">
+        <div class="favorite-item-main">
+          <div>
+            <div class="favorite-item-name">${m.home} vs ${m.away}</div>
+            <div class="favorite-item-meta">${m.leagueName} ${liveBadge}</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="favorite-btn favorite-btn-active" onclick="toggleFavorite('match', '${m.id}');">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+            </svg>
+          </button>
+          <button class="go-to-all-bets-btn" onclick="loadMatchDetail('${m.matchId}', ${JSON.stringify(m).replace(/"/g, '&quot;')});">View</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Leagues search modal
+function openLeaguesSearchModal() {
+  const modal = document.getElementById("leagues-search-modal");
+  if (!modal) return;
+  
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  
+  // Render popular leagues first
+  renderLeaguesModal();
+  
+  // Focus search input
+  setTimeout(() => {
+    const searchInput = document.getElementById("leagues-modal-search");
+    if (searchInput) searchInput.focus();
+  }, 100);
+}
+
+function closeLeaguesSearchModal() {
+  const modal = document.getElementById("leagues-search-modal");
+  if (!modal) return;
+  
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function renderLeaguesModal() {
+  const root = document.getElementById("leagues-modal-list");
+  if (!root) return;
+  
+  const searchInput = document.getElementById("leagues-modal-search");
+  const searchQuery = (searchInput?.value || "").trim().toLowerCase();
+  
+  // Popular leagues (top leagues by match count)
+  const popularLeagues = [...leagues]
+    .filter(l => l.id !== 'all')
+    .sort((a, b) => (b.count || 0) - (a.count || 0))
+    .slice(0, 20);
+  
+  // Filter by search query
+  const filtered = searchQuery 
+    ? popularLeagues.filter(l => l.name.toLowerCase().includes(searchQuery))
+    : popularLeagues;
+  
+  // Group by country for better organization
+  const grouped = {};
+  filtered.forEach(l => {
+    const country = l.country || 'Other';
+    if (!grouped[country]) grouped[country] = [];
+    grouped[country].push(l);
+  });
+  
+  // Popular countries first
+  const popularCountries = ['🇬🇧', '🇪🇸', '🇮🇹', '🇩🇪', '🇫🇷', '🇳🇱', '🇵🇹', '🇷🇺'];
+  const sortedCountries = Object.keys(grouped).sort((a, b) => {
+    const aIndex = popularCountries.indexOf(a);
+    const bIndex = popularCountries.indexOf(b);
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+  
+  if (filtered.length === 0) {
+    root.innerHTML = '<div class="bets-empty"><div class="bets-empty-text">No leagues found</div></div>';
+    return;
+  }
+  
+  root.innerHTML = sortedCountries.map(country => {
+    const countryLeagues = grouped[country];
+    return `
+      <div class="leagues-modal-group">
+        <div class="leagues-modal-group-title">${country}</div>
+        ${countryLeagues.map(l => {
+          const isFavorite = state.favorites.leagues.includes(l.id);
+          return `
+            <button class="leagues-modal-item ${state.activeLeagueId === l.id ? 'leagues-modal-item-active' : ''}" 
+                    onclick="state.activeLeagueId = '${l.id}'; switchTab('sportsbook'); closeLeaguesSearchModal(); renderLeagues(); renderMatches();">
+              <div class="leagues-modal-item-main">
+                ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo" onerror="this.style.display='none';">` : ''}
+                <span class="leagues-modal-item-name">${l.name}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                ${l.count > 0 ? `<span class="pill">${l.count}</span>` : ''}
+                <button class="favorite-btn ${isFavorite ? 'favorite-btn-active' : ''}" 
+                        onclick="event.stopPropagation(); toggleFavorite('league', '${l.id}'); renderLeaguesModal();">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                  </svg>
+                </button>
+              </div>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }).join('');
+}
+
+// Expose toggleFavorite globally
+window.toggleFavorite = toggleFavorite;
+
 function init() {
   renderLeagues();
   renderMatches();
@@ -1308,10 +1693,83 @@ function init() {
   document
     .querySelector(".sidebar")
     .addEventListener("click", handleLeagueClick);
-  // Handle odds clicks - this should stop propagation to prevent modal opening
-  document
-    .getElementById("matches-list")
-    .addEventListener("click", (e) => {
+  
+  // Leagues search modal handlers
+  const leaguesSearchBtn = document.getElementById("leagues-search-btn");
+  const leaguesSearchModal = document.getElementById("leagues-search-modal");
+  const leaguesSearchModalClose = document.getElementById("leagues-search-modal-close");
+  const leaguesModalSearch = document.getElementById("leagues-modal-search");
+  
+  if (leaguesSearchBtn) {
+    leaguesSearchBtn.addEventListener("click", openLeaguesSearchModal);
+  }
+  
+  if (leaguesSearchModalClose) {
+    leaguesSearchModalClose.addEventListener("click", closeLeaguesSearchModal);
+  }
+  
+  if (leaguesSearchModal) {
+    const overlay = leaguesSearchModal.querySelector(".modal-overlay");
+    if (overlay) {
+      overlay.addEventListener("click", closeLeaguesSearchModal);
+    }
+  }
+  
+  if (leaguesModalSearch) {
+    leaguesModalSearch.addEventListener("input", renderLeaguesModal);
+  }
+  
+  // Favorites tab handlers
+  const favoriteTabBtns = document.querySelectorAll(".favorite-tab-btn");
+  favoriteTabBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const type = btn.getAttribute("data-favorite-type");
+      if (!type) return;
+      
+      favoriteTabBtns.forEach(b => b.classList.remove("favorite-tab-active"));
+      btn.classList.add("favorite-tab-active");
+      
+      state.favoriteTab = type;
+      
+      if (type === "leagues") {
+        document.getElementById("favorites-leagues-list").style.display = "block";
+        document.getElementById("favorites-matches-list").style.display = "none";
+        renderFavoritesLeagues();
+      } else {
+        document.getElementById("favorites-leagues-list").style.display = "none";
+        document.getElementById("favorites-matches-list").style.display = "block";
+        renderFavoritesMatches();
+      }
+    });
+  });
+  
+  // Close modal on Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const leaguesModal = document.getElementById("leagues-search-modal");
+      if (leaguesModal && leaguesModal.style.display !== "none") {
+        closeLeaguesSearchModal();
+      }
+      const detailPage = document.getElementById("match-detail-page");
+      if (detailPage && detailPage.style.display !== "none") {
+        closeMatchDetailPage();
+      }
+    }
+  });
+  
+  // Back button handler for match detail page
+  const matchDetailBackBtn = document.getElementById("match-detail-back-btn");
+  if (matchDetailBackBtn) {
+    matchDetailBackBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMatchDetailPage();
+    });
+  }
+  // Handle odds clicks and match card clicks
+  const matchesListEl = document.getElementById("matches-list");
+  if (matchesListEl) {
+    matchesListEl.addEventListener("click", (e) => {
       // First try to handle odds click
       // Check if clicking on outcome button first
       if (e.target.closest(".outcome-btn, .outcome-cell")) {
@@ -1320,27 +1778,23 @@ function init() {
         if (handled) return;
       }
       
-      // Otherwise, check if we should open match detail modal
-      // Don't open modal if clicking on action button
-      if (e.target.closest(".go-to-all-bets-btn, .match-actions, .match-actions-mobile")) {
+      // Don't open modal if clicking on action button, favorite button, or other interactive elements
+      if (e.target.closest(".go-to-all-bets-btn, .go-to-all-bets-btn-digital, .match-actions, .match-actions-mobile, .favorite-btn-digital, .favorite-btn-match, .odds-group, .odds-buttons")) {
         return;
       }
       
-      // On mobile, don't open modal on match row click - only via button
-      if (isMobile()) {
-        return;
-      }
+      // Find match card (both old and new format)
+      const matchCard = e.target.closest(".match-card-digital, .match-row");
+      if (!matchCard) return;
       
-      // On desktop, clicking match row opens detail modal
-      const matchRow = e.target.closest(".match-row");
-      if (!matchRow) return;
-      
-      const matchId = matchRow.getAttribute("data-match-id");
+      const matchId = matchCard.getAttribute("data-match-id");
       const match = matches.find((m) => m.id === matchId);
       if (!match || !match.matchId) return;
       
+      // Open match detail modal
       loadMatchDetail(match.matchId, match);
     });
+  }
   document.getElementById("slip-items").addEventListener("click", handleSlipClick);
 
   document.getElementById("search-input").addEventListener("input", () => {
@@ -1520,55 +1974,217 @@ function init() {
     }
   });
 
+  // Handle window resize - restore betslip if switching to mobile
+  window.addEventListener("resize", () => {
+    const modal = document.getElementById("match-detail-modal");
+    if (modal && modal.style.display !== "none") {
+      if (window.innerWidth <= 768) {
+        // If switched to mobile, restore betslip
+        const betslip = document.querySelector('.betslip');
+        const modalBetslipContainer = document.getElementById("modal-betslip-container");
+        if (betslip && modalBetslipContainer && betslip.parentElement === modalBetslipContainer) {
+          const originalParent = betslip?.dataset?.originalParent;
+          if (originalParent) {
+            try {
+              const parent = document.querySelector(originalParent);
+              if (parent) {
+                parent.appendChild(betslip);
+                betslip.classList.remove('modal-betslip');
+                betslip.style.display = betslip.dataset.originalDisplay || '';
+              }
+            } catch (e) {
+              console.error('[Modal] Error restoring betslip on resize:', e);
+            }
+          }
+        }
+      } else {
+        // If switched to desktop, move betslip to modal if modal is open
+        openModal();
+      }
+    }
+  });
+
 }
 
 // Modal functions (defined outside init to be accessible globally)
 function closeModal() {
   const modal = document.getElementById("match-detail-modal");
   if (modal) modal.style.display = "none";
+  
+  // Restore betslip to original position only on desktop
+  if (window.innerWidth > 768) {
+    const betslip = document.querySelector('.betslip');
+    const modalBetslipContainer = document.getElementById("modal-betslip-container");
+    const originalParent = betslip?.dataset?.originalParent;
+    
+    if (betslip && modalBetslipContainer && betslip.parentElement === modalBetslipContainer && originalParent) {
+      try {
+        const parent = document.querySelector(originalParent);
+        if (parent) {
+          parent.appendChild(betslip);
+          betslip.classList.remove('modal-betslip');
+          betslip.style.display = betslip.dataset.originalDisplay || '';
+          betslip.style.width = '';
+          betslip.style.height = '';
+          betslip.style.position = '';
+          betslip.style.top = '';
+          betslip.style.right = '';
+          betslip.style.zIndex = '';
+          betslip.style.flexDirection = '';
+        } else {
+          // Fallback: try to find layout
+          const layout = document.querySelector('.layout');
+          if (layout) {
+            layout.appendChild(betslip);
+            betslip.classList.remove('modal-betslip');
+            betslip.style.display = betslip.dataset.originalDisplay || '';
+          }
+        }
+      } catch (e) {
+        console.error('[Modal] Error restoring betslip:', e);
+        // Fallback: try to find layout
+        const layout = document.querySelector('.layout');
+        if (layout && betslip) {
+          layout.appendChild(betslip);
+          betslip.classList.remove('modal-betslip');
+          betslip.style.display = betslip.dataset.originalDisplay || '';
+        }
+      }
+    }
+  }
 }
 
 function openModal() {
   const modal = document.getElementById("match-detail-modal");
   if (modal) modal.style.display = "flex";
+  
+  // Move betslip into modal only on desktop
+  if (window.innerWidth > 768) {
+    const betslip = document.querySelector('.betslip');
+    const modalBetslipContainer = document.getElementById("modal-betslip-container");
+    
+    if (betslip && modalBetslipContainer && betslip.parentElement !== modalBetslipContainer) {
+      // Store original parent element reference
+      if (!betslip.dataset.originalParent) {
+        const originalParent = betslip.parentElement;
+        if (originalParent) {
+          // Use class name for layout
+          if (originalParent.classList.contains('layout')) {
+            betslip.dataset.originalParent = '.layout';
+          } else {
+            // Try other selectors
+            let selector = '';
+            if (originalParent.id) {
+              selector = `#${originalParent.id}`;
+            } else if (originalParent.className) {
+              const classes = originalParent.className.split(' ').filter(c => c && c !== 'betslip').join('.');
+              if (classes) {
+                selector = `.${classes}`;
+              }
+            }
+            
+            if (!selector) {
+              selector = originalParent.tagName.toLowerCase();
+            }
+            
+            betslip.dataset.originalParent = selector;
+          }
+          betslip.dataset.originalDisplay = betslip.style.display || '';
+        }
+      }
+      
+      // Move betslip to modal
+      modalBetslipContainer.appendChild(betslip);
+      betslip.classList.add('modal-betslip');
+      betslip.style.display = 'flex';
+      betslip.style.flexDirection = 'column';
+    }
+  }
 }
 
-async function loadMatchDetail(fixtureIdOrMatch, match) {
+// Close match detail page function (global)
+function closeMatchDetailPage() {
+  const detailPage = document.getElementById("match-detail-page");
+  const mainLayout = document.querySelector('.layout');
   
+  if (detailPage) {
+    detailPage.style.display = 'none';
+  }
+  if (mainLayout) {
+    mainLayout.style.display = 'flex';
+  }
+  
+  // Restore sidebar and betslip visibility
+  const sidebar = document.querySelector('.sidebar');
+  const betslip = document.querySelector('.betslip');
+  if (sidebar) {
+    sidebar.style.display = '';
+  }
+  if (betslip) {
+    betslip.style.display = '';
+  }
+}
+
+// Expose globally
+window.closeMatchDetailPage = closeMatchDetailPage;
+
+async function loadMatchDetail(fixtureIdOrMatch, match) {
+  console.log('[Match Detail] Starting loadMatchDetail', { fixtureIdOrMatch, match });
+  
+  // Use modal instead of separate page
   const modal = document.getElementById("match-detail-modal");
   const modalTitle = document.getElementById("modal-match-title");
   const modalBody = document.getElementById("modal-body");
+  
+  // Check if elements exist
+  if (!modal || !modalTitle || !modalBody) {
+    console.error('[Match Detail] Modal elements not found!', { 
+      modal: !!modal, 
+      modalTitle: !!modalTitle, 
+      modalBody: !!modalBody 
+    });
+    return;
+  }
   
   // Handle both cases: fixtureId as first param or match object
   let fixtureId;
   let matchObj;
   
   if (typeof fixtureIdOrMatch === 'string' || typeof fixtureIdOrMatch === 'number') {
-    // First param is fixtureId
     fixtureId = String(fixtureIdOrMatch);
     matchObj = match;
   } else {
-    // First param is match object (backward compatibility)
     matchObj = fixtureIdOrMatch;
-    fixtureId = matchObj.matchId;
+    fixtureId = matchObj?.matchId;
   }
   
   if (!matchObj) {
     matchObj = matches.find(m => m.matchId === fixtureId || m.id === fixtureId);
   }
   
-  // Log fixture_id when clicking on match
-  console.log('Match clicked - fixture_id:', fixtureId);
+  if (!matchObj) {
+    console.error('[Match Detail] Match not found for fixtureId:', fixtureId);
+    alert('Матч не найден');
+    return;
+  }
   
-  // Set title with logos
+  console.log('[Match Detail] Match found:', { fixtureId, matchObj });
+  
+  // Build match header with logos and score
   const home = matchObj?.home || 'Home';
   const away = matchObj?.away || 'Away';
   const homeLogo = matchObj?.homeLogo || null;
   const awayLogo = matchObj?.awayLogo || null;
+  const isLive = matchObj?.isLive || false;
+  const score = matchObj?.score || null;
+  const liveTime = matchObj?.liveTime || null;
+  const livePeriod = matchObj?.livePeriod || null;
+  const leagueName = matchObj?.leagueName || '';
   
   const homeLogoHtml = homeLogo ? `<img src="${homeLogo}" alt="${home}" class="team-logo" onerror="this.style.display='none';">` : '';
   const awayLogoHtml = awayLogo ? `<img src="${awayLogo}" alt="${away}" class="team-logo" onerror="this.style.display='none';">` : '';
   
+  // Set title with logos (simple format as before)
   modalTitle.innerHTML = `${homeLogoHtml}<span class="team-name">${home}</span> <span style="opacity:.7">vs</span> <span class="team-name">${away}</span>${awayLogoHtml}`;
   
   // Show skeleton loading
@@ -1589,113 +2205,135 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
           <div class="skeleton-item"></div>
         </div>
       </div>
-      <div class="skeleton-group">
-        <div class="skeleton-title"></div>
-        <div class="skeleton-grid">
-          <div class="skeleton-item"></div>
-          <div class="skeleton-item"></div>
-        </div>
-      </div>
     </div>
   `;
+  
+  // Open modal
   openModal();
   
   try {
     // Use PHP API to get match details and odds
     if (!fixtureId) {
-      modalBody.innerHTML = '<div class="loading">Match ID not found</div>';
+      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(248, 113, 113, 0.9);">ID матча не найден</div>';
       return;
     }
     
-    const res = await fetch(`${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    console.log('[Match Detail] Fetching odds for fixture:', fixtureId);
+    const url = `${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`;
+    
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
     
     const data = await res.json();
+    console.log('[Match Detail] Data received, odds count:', data.odds?.length || 0);
     
     if (!data.ok || !data.odds || data.odds.length === 0) {
-      modalBody.innerHTML = '<div class="loading">Odds not found</div>';
+      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Коэффициенты не найдены</div>';
       return;
     }
     
-    // Render odds as they come from API - grouped by bookmaker and bet type
-    let html = '<div class="detail-outcomes">';
+    // Render odds as blocks - grouped by bet type (not by bookmaker)
+    // Group all bets by type across all bookmakers
+    const allBetsByType = {};
     
-    // Group by bookmaker
     data.odds.forEach(bookmaker => {
       if (!bookmaker.bets || !Array.isArray(bookmaker.bets) || bookmaker.bets.length === 0) return;
       
-      const bookmakerName = bookmaker.name || 'Unknown Bookmaker';
-      html += `<div class="detail-bookmaker-group">`;
-      html += `<div class="detail-bookmaker-title">${bookmakerName}</div>`;
-      
-      // Group bets by bet name
-      const betsByType = {};
       bookmaker.bets.forEach(bet => {
         if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) return;
         
         const betName = bet.name || 'Unknown Bet';
-        if (!betsByType[betName]) {
-          betsByType[betName] = [];
+        if (!allBetsByType[betName]) {
+          allBetsByType[betName] = [];
         }
-        betsByType[betName].push(bet);
-      });
-      
-      // Render each bet type
-      Object.keys(betsByType).forEach(betName => {
-        html += `<div class="detail-bet-group">`;
-        html += `<div class="detail-bet-title">${betName}</div>`;
-        html += `<div class="detail-outcomes-grid">`;
         
-        betsByType[betName].forEach(bet => {
-          bet.values.forEach(value => {
-            const label = value.value;
-            const odd = parseFloat(value.odd);
-            
-            if (isNaN(odd) || odd <= 0) return;
-            
-            // Create unique identifier for this outcome
-            const outcomeId = `${fixtureId}_${bookmaker.id}_${bet.id}_${label}_${odd}`;
-            const matchId = matchObj?.id || fixtureId;
-            
-            // Check if this outcome is in slip
-            const isActive = state.slip.some(s => {
-              return s.outcomeId === outcomeId || 
-                     (s.matchId === matchId && 
-                      s.bookmakerId === String(bookmaker.id) && 
-                      s.betId === String(bet.id) && 
-                      s.value === label &&
-                      Math.abs(s.odd - odd) < 0.01);
-            });
-            
-            html += `
-              <button class="detail-outcome-item detail-outcome-btn ${isActive ? "detail-outcome-btn-active" : ""}" 
-                      data-match-id="${matchId}"
-                      data-fixture-id="${fixtureId}"
-                      data-bookmaker-id="${bookmaker.id}"
-                      data-bookmaker-name="${bookmakerName}"
-                      data-bet-id="${bet.id}"
-                      data-bet-name="${betName}"
-                      data-value="${label}"
-                      data-odd="${odd}"
-                      data-outcome-id="${outcomeId}">
-                <div class="detail-outcome-label">${label}</div>
-                <div class="detail-outcome-value">${formatOdd(odd)}</div>
-              </button>
-            `;
+        // Add bookmaker info to each bet value
+        bet.values.forEach(value => {
+          allBetsByType[betName].push({
+            ...value,
+            bookmakerId: bookmaker.id,
+            bookmakerName: bookmaker.name || 'Unknown',
+            betId: bet.id
           });
         });
+      });
+    });
+    
+    // Render each bet type as a block
+    let html = '<div class="match-detail-odds-blocks">';
+    
+    Object.keys(allBetsByType).forEach(betName => {
+      const betValues = allBetsByType[betName];
+      
+      // For each bet type, find best odds (highest) for each unique outcome
+      const bestOdds = {};
+      betValues.forEach(item => {
+        const label = item.value;
+        const odd = parseFloat(item.odd);
+        if (isNaN(odd) || odd <= 0) return;
         
-        html += `</div></div>`;
+        const key = label;
+        if (!bestOdds[key] || odd > bestOdds[key].odd) {
+          bestOdds[key] = {
+            label,
+            odd,
+            bookmakerId: item.bookmakerId,
+            bookmakerName: item.bookmakerName,
+            betId: item.betId
+          };
+        }
       });
       
-      html += `</div>`;
+      html += `<div class="match-detail-odds-block">`;
+      html += `<div class="match-detail-odds-block-title">${betName}</div>`;
+      html += `<div class="match-detail-odds-block-content">`;
+      
+      Object.values(bestOdds).forEach(item => {
+        const outcomeId = `${fixtureId}_${item.bookmakerId}_${item.betId}_${item.label}_${item.odd}`;
+        const matchId = matchObj?.id || fixtureId;
+        
+        // Check if this outcome is in slip
+        const isActive = state.slip.some(s => {
+          return s.outcomeId === outcomeId || 
+                 (s.matchId === matchId && 
+                  s.bookmakerId === String(item.bookmakerId) && 
+                  s.betId === String(item.betId) && 
+                  s.value === item.label &&
+                  Math.abs(s.odd - item.odd) < 0.01);
+        });
+        
+        html += `
+          <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
+                  data-match-id="${matchId}"
+                  data-fixture-id="${fixtureId}"
+                  data-bookmaker-id="${item.bookmakerId}"
+                  data-bookmaker-name="${item.bookmakerName}"
+                  data-bet-id="${item.betId}"
+                  data-bet-name="${betName}"
+                  data-value="${item.label}"
+                  data-odd="${item.odd}"
+                  data-outcome-id="${outcomeId}">
+            <span class="match-detail-odds-btn-label">${item.label}</span>
+            <span class="match-detail-odds-btn-value">${formatOdd(item.odd)}</span>
+          </button>
+        `;
+      });
+      
+      html += `</div></div>`;
     });
     
     html += '</div>';
-    modalBody.innerHTML = html;
     
-    // Add click handlers for bet buttons in modal
-    modalBody.querySelectorAll('.detail-outcome-btn').forEach(btn => {
+    modalBody.innerHTML = html;
+    console.log('[Match Detail] Content set, buttons count:', modalBody.querySelectorAll('.match-detail-odds-btn').length);
+    
+    // Add click handlers for bet buttons
+    const oddsButtons = modalBody.querySelectorAll('.match-detail-odds-btn');
+    console.log('[Match Detail] Found', oddsButtons.length, 'odds buttons');
+    
+    oddsButtons.forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const matchId = btn.getAttribute('data-match-id');
@@ -1739,8 +2377,8 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
           value: value,
           odd: odd,
           outcomeId: outcomeId,
-          home: matchObj.home || home,
-          away: matchObj.away || away,
+          home: matchObj.home || 'Home',
+          away: matchObj.away || 'Away',
           leagueName: matchObj.leagueName || 'Unknown League',
           // For display
           label: `${bookmakerName} - ${betName}: ${value}`,
@@ -1763,23 +2401,22 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
         renderMatches();
         renderSlip();
         
-        // Close modal and open betslip after selecting coefficient
-        closeModal();
-        
-        // Open betslip on mobile when adding bet (after a short delay to allow UI to update)
+        // On mobile: close modal and open betslip
         if (isMobile()) {
-          setTimeout(() => openBetslipMobile(), 150);
+          closeModal();
+          setTimeout(() => {
+            openBetslipMobile();
+          }, 200);
         } else {
-          // On desktop, ensure betslip is visible (it should already be visible in sidebar)
-          // Switch to sportsbook tab to show betslip
-          if (state.activeTab !== 'sportsbook') {
-            switchTab('sportsbook');
-          }
+          // On desktop: reload modal to reflect changes
+          loadMatchDetail(fixtureId, matchObj);
         }
       });
     });
-  } catch (err) {
-    modalBody.innerHTML = `<div class="loading" style="color:rgba(248,113,113,0.9);">Loading error: ${err.message}</div>`;
+    
+  } catch (error) {
+    console.error('[Match Detail] Error loading match detail:', error);
+    modalBody.innerHTML = `<div class="loading" style="padding: 40px; text-align: center; color: rgba(248, 113, 113, 0.9);">Ошибка загрузки: ${error.message}</div>`;
   }
 }
 
@@ -1881,7 +2518,7 @@ window.addEventListener("DOMContentLoaded", () => {
   
   // Handle "Go to all bets" button clicks (works on both mobile and desktop)
   document.addEventListener('click', (e) => {
-    const goToBetsBtn = e.target.closest('.go-to-all-bets-btn');
+    const goToBetsBtn = e.target.closest('.go-to-all-bets-btn, .go-to-all-bets-btn-digital');
     if (!goToBetsBtn) return;
     
     e.stopPropagation();
