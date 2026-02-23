@@ -171,29 +171,32 @@ html {
   margin-top: -2px;
 }
 
-.search-box {
-  width: 220px;
-  max-width: 50vw;
+.live-matches-btn {
+  padding: 8px 16px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 15, 18, 0.9);
-  padding: 0 10px;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
   height: 32px;
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
-.search-box input {
-  width: 100%;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: inherit;
-  font-size: 13px;
+.live-matches-btn:hover {
+  background: rgba(220, 38, 38, 0.2);
+  border-color: rgba(220, 38, 38, 0.5);
+  transform: translateY(-1px);
 }
 
-.search-box input::placeholder {
-  color: rgba(232, 232, 234, 0.5);
+.live-matches-btn:active {
+  transform: translateY(0);
+  background: rgba(220, 38, 38, 0.15);
 }
 
 .tabs {
@@ -2815,10 +2818,12 @@ html {
     height: 20px;
   }
 
-  .search-box {
+  .live-matches-btn {
     flex: 1;
     max-width: calc(100% - 120px);
     height: 36px;
+    font-size: 12px;
+    padding: 8px 12px;
   }
 
   .logo {
@@ -5233,3 +5238,4 @@ html {
     max-height: 250px;
   }
 }
+

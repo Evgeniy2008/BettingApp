@@ -41,6 +41,24 @@ let matches = []; // Global matches array - will be updated on each load
 // Cache for odds check results (to avoid checking same match multiple times)
 const oddsCheckCache = new Map();
 
+// Top leagues list for prioritization
+const TOP_LEAGUES = [
+  'premier league', 'premiership', 'англия премьер', 'английская премьер',
+  'la liga', 'испания ла лига', 'испанская лига',
+  'serie a', 'италия серия а', 'итальянская серия',
+  'bundesliga', 'германия бундеслига', 'немецкая бундеслига',
+  'ligue 1', 'франция лига 1', 'французская лига',
+  'champions league', 'лига чемпионов', 'uefa champions',
+  'europa league', 'лига европы', 'uefa europa'
+];
+
+// Check if a league is a top league
+function isTopLeague(leagueName) {
+  if (!leagueName) return false;
+  const name = leagueName.toLowerCase();
+  return TOP_LEAGUES.some(top => name.includes(top));
+}
+
 // Show skeleton loading for matches
 function showMatchesSkeleton() {
   const root = document.getElementById("matches-list");
@@ -258,16 +276,6 @@ async function loadMatches(forceRefresh = false) {
     console.log(`[App] Matches with detailUrl: ${matchesWithUrl}`);
 
     // Sort leagues: "all" first, then top leagues, then by match count
-    const topLeagues = [
-      'premier league', 'premiership', 'англия премьер', 'английская премьер',
-      'la liga', 'испания ла лига', 'испанская лига',
-      'serie a', 'италия серия а', 'итальянская серия',
-      'bundesliga', 'германия бундеслига', 'немецкая бундеслига',
-      'ligue 1', 'франция лига 1', 'французская лига',
-      'champions league', 'лига чемпионов', 'uefa champions',
-      'europa league', 'лига европы', 'uefa europa'
-    ];
-    
     leagues = Array.from(leagueMap.values()).sort((a, b) => {
       // "all" always first
       if (a.id === "all") return -1;
@@ -277,8 +285,8 @@ async function loadMatches(forceRefresh = false) {
       const bName = (b.name || '').toLowerCase();
       
       // Check if league is in top leagues
-      const aIsTop = topLeagues.some(top => aName.includes(top));
-      const bIsTop = topLeagues.some(top => bName.includes(top));
+      const aIsTop = isTopLeague(a.name);
+      const bIsTop = isTopLeague(b.name);
       
       // Top leagues come first
       if (aIsTop && !bIsTop) return -1;
@@ -552,11 +560,20 @@ async function renderMatches() {
     console.log(`[Render] After search filter: ${ms.length} matches (was ${beforeSearch})`);
   }
 
-  // Sort: LIVE matches first, then regular matches
+  // Sort: LIVE matches first, then top league matches, then regular matches
   const beforeSort = ms.length;
   ms.sort((a, b) => {
+    // First: LIVE matches come before non-LIVE
     if (a.isLive && !b.isLive) return -1;
     if (!a.isLive && b.isLive) return 1;
+    
+    // Second: Within same LIVE status, top league matches come first
+    const aIsTop = isTopLeague(a.leagueName);
+    const bIsTop = isTopLeague(b.leagueName);
+    
+    if (aIsTop && !bIsTop) return -1;
+    if (!aIsTop && bIsTop) return 1;
+    
     return 0;
   });
   console.log(`[Render] After sort: ${ms.length} matches`);
@@ -1108,9 +1125,9 @@ function renderSlip() {
 }
 
 function setStake(amount) {
-  state.stake = amount;
+  state.stake = amount ? Math.round(amount * 100) / 100 : 0; // Round to 2 decimal places
   const input = document.getElementById("stake-input");
-  input.value = amount ? String(amount) : "";
+  input.value = state.stake > 0 ? state.stake.toFixed(2) : "";
   renderSlip();
 }
 
@@ -1316,11 +1333,6 @@ function setupBottomNav() {
         if (state.activeTab !== "sportsbook") {
           switchTab("sportsbook");
         }
-      } else if (action === "live" || (navName === "sportsbook" && action === "live")) {
-        // Live button - switch to sportsbook and force refresh
-        switchTab("sportsbook");
-        // Force reload matches without cache
-        loadMatches(true);
       } else if (navName === "betslip") {
         // Toggle betslip on mobile
         if (isMobile()) {
@@ -1354,10 +1366,9 @@ function updateBottomNavActive() {
   const bottomNavItems = document.querySelectorAll(".bottom-nav-item");
   bottomNavItems.forEach((item) => {
     const navName = item.getAttribute("data-nav");
-    const action = item.getAttribute("data-action");
     
-    // Special handling for Live button - active when on sportsbook
-    if (action === "live") {
+    // Special handling for LIVE button (sportsbook) - active when on sportsbook
+    if (navName === "sportsbook") {
       if (state.activeTab === "sportsbook") {
         item.classList.add("active");
       } else {
@@ -2047,18 +2058,16 @@ function renderLeaguesFilter() {
     filtered = filtered.filter(l => l.name.toLowerCase().includes(searchQuery));
   }
   
-  // Sort leagues (top leagues first)
-  const topLeagueNames = [
-    'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
-    'Champions League', 'Europa League', 'Eredivisie', 'Primeira Liga'
-  ];
-  
+  // Sort leagues: top leagues first (using isTopLeague function)
   filtered.sort((a, b) => {
-    const aIndex = topLeagueNames.findIndex(name => a.name.includes(name));
-    const bIndex = topLeagueNames.findIndex(name => b.name.includes(name));
-    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-    if (aIndex !== -1) return -1;
-    if (bIndex !== -1) return 1;
+    const aIsTop = isTopLeague(a.name);
+    const bIsTop = isTopLeague(b.name);
+    
+    // Top leagues come first
+    if (aIsTop && !bIsTop) return -1;
+    if (!aIsTop && bIsTop) return 1;
+    
+    // If both are top or both are not, sort by match count
     return (b.count || 0) - (a.count || 0);
   });
   
@@ -2148,6 +2157,19 @@ function init() {
   // Don't load bets on init, only when user switches to bets tab
   // Set initial active state for bottom nav
   updateBottomNavActive();
+
+  // Live Matches button handler
+  const liveMatchesBtn = document.getElementById('live-matches-btn');
+  if (liveMatchesBtn) {
+    liveMatchesBtn.addEventListener('click', () => {
+      switchTab('sportsbook');
+      state.activeLeagueId = 'all';
+      state.searchQuery = '';
+      state.selectedLeagueIds = [];
+      state.currentPage = 1;
+      renderMatches();
+    });
+  }
 
   // Removed sidebar handlers as sidebar is no longer present
   
@@ -2368,7 +2390,15 @@ function init() {
 
   document.getElementById("stake-input").addEventListener("input", (e) => {
     const value = Number(e.target.value || "0");
-    state.stake = value > 0 ? value : 0;
+    state.stake = value > 0 ? Math.round(value * 100) / 100 : 0; // Round to 2 decimal places
+    e.target.value = state.stake > 0 ? state.stake.toFixed(2) : "";
+    renderSlip();
+  });
+  
+  document.getElementById("stake-input").addEventListener("blur", (e) => {
+    const value = Number(e.target.value || "0");
+    state.stake = value > 0 ? Math.round(value * 100) / 100 : 0; // Round to 2 decimal places
+    e.target.value = state.stake > 0 ? state.stake.toFixed(2) : "";
     renderSlip();
   });
 
@@ -2617,6 +2647,8 @@ function openModal() {
       betslip.classList.add('modal-betslip');
       betslip.style.display = 'flex';
       betslip.style.flexDirection = 'column';
+      betslip.style.height = '100%';
+      betslip.style.maxHeight = '100%';
     }
   }
 }
@@ -2917,8 +2949,11 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
           state.slip.unshift(next);
         }
         
-        renderMatches();
+        // Only update slip, don't reload matches
         renderSlip();
+        
+        // Update button active state without reloading modal
+        btn.classList.toggle('match-detail-odds-btn-active', existingSameOutcomeIdx < 0);
         
         // On mobile: close modal and open betslip
         if (isMobile()) {
@@ -2926,10 +2961,8 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
           setTimeout(() => {
             openBetslipMobile();
           }, 200);
-        } else {
-          // On desktop: reload modal to reflect changes
-          loadMatchDetail(fixtureId, matchObj);
         }
+        // On desktop: just update the button state, no need to reload modal
       });
     });
     

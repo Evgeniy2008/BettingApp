@@ -211,66 +211,66 @@ if (!BOT_TOKEN) {
     // Always show buttons. If HTTPS is configured, they become WebApp buttons.
     if (isHttps(PUBLIC_WEBAPP_URL) && isHttps(PUBLIC_ADMIN_URL)) {
       return Markup.keyboard([
-        [Markup.button.webApp("⚽ Ставки", PUBLIC_WEBAPP_URL)],
-        [Markup.button.webApp("🛠️ Админка", PUBLIC_ADMIN_URL)]
+        [Markup.button.webApp("⚽ Bets", PUBLIC_WEBAPP_URL)],
+        [Markup.button.webApp("🛠️ Admin", PUBLIC_ADMIN_URL)]
       ])
         .resize()
         .persistent();
     }
 
     // Dev fallback: regular buttons (no WebApp) so Telegram won't reject the message.
-    return Markup.keyboard([["⚽ Ставки"], ["🛠️ Админка"]]).resize().persistent();
+    return Markup.keyboard([["⚽ Bets"], ["🛠️ Admin"]]).resize().persistent();
   }
 
   async function explainHttps(ctx: any) {
     await ctx.reply(
       [
-        "WebApp в Telegram открывается **только по HTTPS**.",
+        "WebApp in Telegram opens **only via HTTPS**.",
         "",
-        "Сейчас у вас:",
+        "Currently you have:",
         `- PUBLIC_WEBAPP_URL: ${PUBLIC_WEBAPP_URL}`,
         `- PUBLIC_ADMIN_URL: ${PUBLIC_ADMIN_URL}`,
         "",
-        "Для разработки проще всего сделать HTTPS туннель, например через Cloudflare Tunnel:",
-        "1) Установите `cloudflared`",
-        "2) Запустите: `cloudflared tunnel --url http://localhost:5173`",
-        "3) Получившийся `https://...` вставьте в PUBLIC_WEBAPP_URL",
-        "4) Аналогично для админки: `cloudflared tunnel --url http://localhost:5174` → PUBLIC_ADMIN_URL",
+        "For development, the easiest way is to create an HTTPS tunnel, for example via Cloudflare Tunnel:",
+        "1) Install `cloudflared`",
+        "2) Run: `cloudflared tunnel --url http://localhost:5173`",
+        "3) Insert the resulting `https://...` into PUBLIC_WEBAPP_URL",
+        "4) Similarly for admin: `cloudflared tunnel --url http://localhost:5174` → PUBLIC_ADMIN_URL",
         "",
-        "После этого кнопки откроют WebApp прямо внутри Telegram."
+        "After that, the buttons will open WebApp directly inside Telegram."
       ].join("\n")
     );
   }
 
   bot.start(async (ctx) => {
-    await ctx.reply("Выберите раздел:", mainKeyboard());
+    await ctx.reply("Choose a section:", mainKeyboard());
     if (!isHttps(PUBLIC_WEBAPP_URL) || !isHttps(PUBLIC_ADMIN_URL)) {
       await explainHttps(ctx);
     }
   });
 
   bot.command("app", async (ctx) => {
-    await ctx.reply("Ставки:", mainKeyboard());
+    await ctx.reply("Bets:", mainKeyboard());
     if (!isHttps(PUBLIC_WEBAPP_URL)) await explainHttps(ctx);
   });
   bot.command("admin", async (ctx) => {
-    await ctx.reply("Админка:", mainKeyboard());
+    await ctx.reply("Admin:", mainKeyboard());
     if (!isHttps(PUBLIC_ADMIN_URL)) await explainHttps(ctx);
   });
 
-  bot.hears("⚽ Ставки", async (ctx) => {
+  bot.hears("⚽ Bets", async (ctx) => {
     if (!isHttps(PUBLIC_WEBAPP_URL)) {
       await explainHttps(ctx);
       return;
     }
-    await ctx.reply("Открывайте ставки кнопкой WebApp ниже:", mainKeyboard());
+    await ctx.reply("Open bets using the WebApp button below:", mainKeyboard());
   });
-  bot.hears("🛠️ Админка", async (ctx) => {
+  bot.hears("🛠️ Admin", async (ctx) => {
     if (!isHttps(PUBLIC_ADMIN_URL)) {
       await explainHttps(ctx);
       return;
     }
-    await ctx.reply("Открывайте админку кнопкой WebApp ниже:", mainKeyboard());
+    await ctx.reply("Open admin using the WebApp button below:", mainKeyboard());
   });
 
   bot.catch((err) => {
