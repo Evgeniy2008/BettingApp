@@ -326,6 +326,7 @@ const state = {
   currentPage: 1,
   matchesPerPage: 10,
   searchQuery: "",
+  selectedLeagueIds: [], // Array of selected league IDs for filtering
   betsFilter: "all", // Filter for bets page: all, pending, active, won, lost, cancelled
   favorites: (function() {
     try {
@@ -350,41 +351,9 @@ function formatOdd(n) {
 }
 
 function renderLeagues() {
-  const root = document.getElementById("leagues-list");
-  const search = document.getElementById("search-input");
-  const q = (search.value || "").trim().toLowerCase();
-
-  const filtered = leagues.filter((l) =>
-    l.name.toLowerCase().includes(q)
-  );
-
-  root.innerHTML = filtered
-    .map(
-      (l) => {
-        const isFavorite = state.favorites.leagues.includes(l.id);
-        return `
-        <button class="league-item ${
-          state.activeLeagueId === l.id ? "league-item-active" : ""
-        }" data-league="${l.id}">
-          <div class="league-main">
-            ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
-              <span class="league-flag" style="display:none;">${l.country || "🏳️"}</span>` : 
-              `<span class="league-flag">${l.country || "🏳️"}</span>`}
-            <span class="league-name">${l.name}</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <button class="favorite-btn ${isFavorite ? 'favorite-btn-active' : ''}" data-favorite-type="league" data-favorite-id="${l.id}" onclick="event.stopPropagation(); toggleFavorite('league', '${l.id}');">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-              </svg>
-            </button>
-          </div>
-        </button>
-      `;
-      }
-    )
-    .join("");
-  }
+  // This function is no longer needed as we removed the sidebar
+  // But keeping it for compatibility with other parts of the code
+}
 
 // Check if match has odds available
 async function checkMatchHasOdds(match) {
@@ -553,12 +522,15 @@ async function renderMatches() {
   const nonLiveCount = matches.filter(m => !m.isLive).length;
   console.log(`[Render] LIVE: ${liveCount}, Non-LIVE: ${nonLiveCount}`);
   
-  let ms =
-    state.activeLeagueId === "all"
-      ? matches
-      : matches.filter((m) => m.leagueId === state.activeLeagueId);
+  // Apply league filter
+  let ms = matches;
+  if (state.selectedLeagueIds.length > 0) {
+    ms = matches.filter((m) => state.selectedLeagueIds.includes(m.leagueId));
+  } else if (state.activeLeagueId !== "all") {
+    ms = matches.filter((m) => m.leagueId === state.activeLeagueId);
+  }
 
-  console.log(`[Render] After league filter (${state.activeLeagueId}): ${ms.length} matches`);
+  console.log(`[Render] After league filter: ${ms.length} matches`);
 
   // Apply search filter
   if (state.searchQuery.trim()) {
@@ -797,16 +769,16 @@ function renderMatchRow(match) {
         <div class="match-league-digital">
           ${isLive ? '<span class="live-badge-digital"><span class="live-pulse"></span>LIVE</span>' : ''}
           <span class="league-name-digital">${match.leagueName}</span>
+          <button class="favorite-btn-inline ${isMatchFavorite ? 'favorite-btn-active' : ''}" 
+                  data-favorite-type="match" 
+                  data-favorite-id="${matchIdForFavorite}"
+                  type="button"
+                  aria-label="Add to favorites">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="${isMatchFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+            </svg>
+          </button>
         </div>
-        <button class="favorite-btn-digital ${isMatchFavorite ? 'favorite-btn-active' : ''}" 
-                data-favorite-type="match" 
-                data-favorite-id="${matchIdForFavorite}"
-                type="button"
-                aria-label="Add to favorites">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="${isMatchFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-          </svg>
-        </button>
       </div>
       
       <div class="match-teams-digital">
@@ -999,6 +971,70 @@ function toggleBetslipMobile() {
   updateBottomNavActive();
 }
 
+// Open betslip on desktop
+function openBetslipDesktop() {
+  if (isMobile()) return;
+  const betslip = document.querySelector('.betslip');
+  const closeBtn = document.getElementById('betslip-close-btn-desktop');
+  if (!betslip) return;
+  
+  // Show betslip
+  betslip.classList.add('betslip-open-desktop');
+  if (closeBtn) closeBtn.style.display = 'flex';
+  
+  updateBetslipFloatButton();
+}
+
+// Close betslip on desktop
+function closeBetslipDesktop() {
+  if (isMobile()) return;
+  const betslip = document.querySelector('.betslip');
+  const closeBtn = document.getElementById('betslip-close-btn-desktop');
+  if (!betslip) return;
+  
+  // Hide betslip
+  betslip.classList.remove('betslip-open-desktop');
+  if (closeBtn) closeBtn.style.display = 'none';
+  
+  updateBetslipFloatButton();
+}
+
+// Toggle betslip on desktop
+function toggleBetslipDesktop() {
+  if (isMobile()) return;
+  const betslip = document.querySelector('.betslip');
+  if (!betslip) return;
+  
+  if (betslip.classList.contains('betslip-open-desktop')) {
+    closeBetslipDesktop();
+  } else {
+    openBetslipDesktop();
+  }
+}
+
+// Update betslip float button visibility and count
+function updateBetslipFloatButton() {
+  const floatBtn = document.getElementById('betslip-float-btn');
+  const floatCount = document.getElementById('betslip-float-count');
+  if (!floatBtn || !floatCount) return;
+  
+  const count = state.slip.length;
+  floatCount.textContent = count > 0 ? count : '';
+  
+  // Show button if there are bets or betslip is open on desktop
+  if (isMobile()) {
+    // On mobile, show button if there are bets
+    if (count > 0) {
+      floatBtn.classList.remove('hidden');
+    } else {
+      floatBtn.classList.add('hidden');
+    }
+  } else {
+    // On desktop, always show button
+    floatBtn.classList.remove('hidden');
+  }
+}
+
 function renderSlip() {
   const root = document.getElementById("slip-items");
   const slip = state.slip;
@@ -1007,15 +1043,7 @@ function renderSlip() {
   const bottomNavBetslipCount = document.getElementById("bottom-nav-betslip-count");
   
   slipCount.textContent = slip.length.toString();
-  if (floatCount) {
-    floatCount.textContent = slip.length.toString();
-    // Show/hide float button based on slip count on mobile
-    const floatBtn = document.getElementById("betslip-float-btn");
-    if (floatBtn && isMobile()) {
-      floatBtn.style.display = 'flex';
-      floatBtn.classList.remove('hidden');
-    }
-  }
+  updateBetslipFloatButton();
   
   // Update bottom nav betslip count
   if (bottomNavBetslipCount) {
@@ -1172,12 +1200,15 @@ function handleOddsClick(e) {
   else {
     state.slip.unshift(next);
   }
-  renderMatches();
+  // Don't re-render matches, only update slip
   renderSlip();
   
-  // Open betslip on mobile when clicking on odds (after a short delay to allow UI to update)
+    // Open betslip on mobile when clicking on odds (after a short delay to allow UI to update)
   if (isMobile()) {
     setTimeout(() => openBetslipMobile(), 150);
+  } else {
+    // On desktop, open betslip when clicking on odds
+    openBetslipDesktop();
   }
   
   return true; // Indicate that odds click was handled
@@ -1190,7 +1221,7 @@ function handleSlipClick(e) {
   if (!item) return;
   const matchId = item.getAttribute("data-match-id");
   state.slip = state.slip.filter((s) => s.matchId !== matchId);
-  renderMatches();
+  // Don't re-render matches, only update slip
   renderSlip();
 }
 
@@ -1279,14 +1310,11 @@ function setupBottomNav() {
       const action = item.getAttribute("data-action");
       
       if (navName === "search") {
-        // Focus on search input
-        const searchInput = document.getElementById("search-input");
-        if (searchInput) {
-          searchInput.focus();
-          // Also switch to sportsbook tab if not already there
-          if (state.activeTab !== "sportsbook") {
-            switchTab("sportsbook");
-          }
+        // Open search filters modal
+        openSearchFiltersModal();
+        // Also switch to sportsbook tab if not already there
+        if (state.activeTab !== "sportsbook") {
+          switchTab("sportsbook");
         }
       } else if (action === "live" || (navName === "sportsbook" && action === "live")) {
         // Live button - switch to sportsbook and force refresh
@@ -1735,18 +1763,20 @@ function toggleFavorite(type, id) {
   
   // Update button state directly in DOM (fast, no re-render needed)
   if (type === 'match') {
-    const button = document.querySelector(`[data-favorite-type="match"][data-favorite-id="${idStr}"]`);
-    if (button) {
-      if (wasFavorite) {
-        button.classList.remove('favorite-btn-active');
-        const svg = button.querySelector('svg');
-        if (svg) svg.setAttribute('fill', 'none');
-      } else {
-        button.classList.add('favorite-btn-active');
-        const svg = button.querySelector('svg');
-        if (svg) svg.setAttribute('fill', 'currentColor');
+    const buttons = document.querySelectorAll(`[data-favorite-type="match"][data-favorite-id="${idStr}"]`);
+    buttons.forEach(button => {
+      if (button) {
+        if (wasFavorite) {
+          button.classList.remove('favorite-btn-active');
+          const svg = button.querySelector('svg');
+          if (svg) svg.setAttribute('fill', 'none');
+        } else {
+          button.classList.add('favorite-btn-active');
+          const svg = button.querySelector('svg');
+          if (svg) svg.setAttribute('fill', 'currentColor');
+        }
       }
-    }
+    });
     
     // Update favorites page if it's open
     if (state.activeTab === 'favorites' && state.favoriteTab === 'matches') {
@@ -1969,6 +1999,142 @@ function renderLeaguesModal() {
   }).join('');
 }
 
+// Search & Filters Modal functions
+function openSearchFiltersModal() {
+  const modal = document.getElementById("search-filters-modal");
+  if (!modal) return;
+  
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  
+  // Render leagues filter
+  renderLeaguesFilter();
+  
+  // Set current search query if exists
+  const searchInput = document.getElementById("search-matches-input");
+  if (searchInput && state.searchQuery) {
+    searchInput.value = state.searchQuery;
+    const clearBtn = document.getElementById("search-matches-clear");
+    if (clearBtn) clearBtn.style.display = "flex";
+  }
+  
+  // Focus search input
+  setTimeout(() => {
+    if (searchInput) searchInput.focus();
+  }, 100);
+}
+
+function closeSearchFiltersModal() {
+  const modal = document.getElementById("search-filters-modal");
+  if (!modal) return;
+  
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function renderLeaguesFilter() {
+  const root = document.getElementById("leagues-filter-list");
+  if (!root) return;
+  
+  const searchInput = document.getElementById("leagues-filter-search");
+  const searchQuery = (searchInput?.value || "").trim().toLowerCase();
+  
+  // Get all leagues except 'all'
+  let filtered = leagues.filter(l => l.id !== 'all');
+  
+  // Filter by search query
+  if (searchQuery) {
+    filtered = filtered.filter(l => l.name.toLowerCase().includes(searchQuery));
+  }
+  
+  // Sort leagues (top leagues first)
+  const topLeagueNames = [
+    'Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
+    'Champions League', 'Europa League', 'Eredivisie', 'Primeira Liga'
+  ];
+  
+  filtered.sort((a, b) => {
+    const aIndex = topLeagueNames.findIndex(name => a.name.includes(name));
+    const bIndex = topLeagueNames.findIndex(name => b.name.includes(name));
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+    if (aIndex !== -1) return -1;
+    if (bIndex !== -1) return 1;
+    return (b.count || 0) - (a.count || 0);
+  });
+  
+  if (filtered.length === 0) {
+    root.innerHTML = '<div class="bets-empty"><div class="bets-empty-text">No leagues found</div></div>';
+    return;
+  }
+  
+  root.innerHTML = filtered.map(l => {
+    const isSelected = state.selectedLeagueIds.includes(l.id);
+    const isFavorite = state.favorites.leagues.includes(l.id);
+    return `
+      <label class="league-filter-item ${isSelected ? 'league-filter-item-selected' : ''}">
+        <input type="checkbox" value="${l.id}" ${isSelected ? 'checked' : ''} class="league-filter-checkbox">
+        <div class="league-filter-item-content">
+          ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo-small" onerror="this.style.display='none';">` : ''}
+          <span class="league-filter-item-name">${l.name}</span>
+        </div>
+        <button class="favorite-btn-small ${isFavorite ? 'favorite-btn-active' : ''}" 
+                data-favorite-type="league" 
+                data-favorite-id="${l.id}"
+                onclick="event.stopPropagation(); toggleFavorite('league', '${l.id}'); renderLeaguesFilter();"
+                type="button"
+                aria-label="Add to favorites">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFavorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+        </button>
+      </label>
+    `;
+  }).join('');
+}
+
+function applySearchFilters() {
+  // Get search query
+  const searchInput = document.getElementById("search-matches-input");
+  if (searchInput) {
+    state.searchQuery = searchInput.value.trim();
+  }
+  
+  // Get selected leagues
+  const checkboxes = document.querySelectorAll('.league-filter-checkbox:checked');
+  state.selectedLeagueIds = Array.from(checkboxes).map(cb => cb.value);
+  
+  // Reset to first page
+  state.currentPage = 1;
+  
+  // Close modal
+  closeSearchFiltersModal();
+  
+  // Re-render matches
+  renderMatches();
+}
+
+function resetSearchFilters() {
+  state.searchQuery = "";
+  state.selectedLeagueIds = [];
+  state.currentPage = 1;
+  
+  const searchInput = document.getElementById("search-matches-input");
+  if (searchInput) searchInput.value = "";
+  
+  const clearBtn = document.getElementById("search-matches-clear");
+  if (clearBtn) clearBtn.style.display = "none";
+  
+  // Uncheck all checkboxes
+  const checkboxes = document.querySelectorAll('.league-filter-checkbox');
+  checkboxes.forEach(cb => cb.checked = false);
+  
+  // Re-render leagues filter
+  renderLeaguesFilter();
+  
+  // Re-render matches
+  renderMatches();
+}
+
 // Expose toggleFavorite globally
 window.toggleFavorite = toggleFavorite;
 
@@ -1983,12 +2149,7 @@ function init() {
   // Set initial active state for bottom nav
   updateBottomNavActive();
 
-  document
-    .getElementById("leagues-list")
-    .addEventListener("click", handleLeagueClick);
-  document
-    .querySelector(".sidebar")
-    .addEventListener("click", handleLeagueClick);
+  // Removed sidebar handlers as sidebar is no longer present
   
   // Leagues search modal handlers
   const leaguesSearchBtn = document.getElementById("leagues-search-btn");
@@ -2042,9 +2203,15 @@ function init() {
   // Close modal on Escape
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      const searchFiltersModal = document.getElementById("search-filters-modal");
+      if (searchFiltersModal && searchFiltersModal.style.display !== "none") {
+        closeSearchFiltersModal();
+        return;
+      }
       const leaguesModal = document.getElementById("leagues-search-modal");
       if (leaguesModal && leaguesModal.style.display !== "none") {
         closeLeaguesSearchModal();
+        return;
       }
       const detailPage = document.getElementById("match-detail-page");
       if (detailPage && detailPage.style.display !== "none") {
@@ -2067,7 +2234,7 @@ function init() {
   if (matchesListEl) {
     matchesListEl.addEventListener("click", (e) => {
       // Check if clicking on favorite button - handle it directly
-      const favoriteBtn = e.target.closest(".favorite-btn-digital, .favorite-btn-match, .favorite-btn");
+      const favoriteBtn = e.target.closest(".favorite-btn-digital, .favorite-btn-match, .favorite-btn, .favorite-btn-inline");
       if (favoriteBtn) {
         e.stopPropagation();
         e.preventDefault();
@@ -2121,35 +2288,63 @@ function init() {
   }
   document.getElementById("slip-items").addEventListener("click", handleSlipClick);
 
-  document.getElementById("search-input").addEventListener("input", () => {
-    renderLeagues();
-  });
-
-  // Matches search handlers
-  const matchesSearchInput = document.getElementById("matches-search-input");
-  const matchesSearchClear = document.getElementById("matches-search-clear");
-
-  matchesSearchInput.addEventListener("input", (e) => {
-    state.searchQuery = e.target.value;
-    state.currentPage = 1; // Reset to first page when searching
-    renderMatches();
-    
-    // Show/hide clear button
-    if (state.searchQuery.trim()) {
-      matchesSearchClear.style.display = "flex";
-    } else {
-      matchesSearchClear.style.display = "none";
+  // Search & Filters Modal handlers
+  const searchFilterBtn = document.getElementById("search-filter-btn");
+  const searchFiltersModal = document.getElementById("search-filters-modal");
+  const searchFiltersModalClose = document.getElementById("search-filters-modal-close");
+  const searchFiltersApply = document.getElementById("search-filters-apply");
+  const searchFiltersReset = document.getElementById("search-filters-reset");
+  const leaguesFilterSearch = document.getElementById("leagues-filter-search");
+  const searchMatchesInput = document.getElementById("search-matches-input");
+  const searchMatchesClear = document.getElementById("search-matches-clear");
+  
+  if (searchFilterBtn) {
+    searchFilterBtn.addEventListener("click", openSearchFiltersModal);
+  }
+  
+  if (searchFiltersModalClose) {
+    searchFiltersModalClose.addEventListener("click", closeSearchFiltersModal);
+  }
+  
+  if (searchFiltersModal) {
+    const overlay = searchFiltersModal.querySelector(".modal-overlay");
+    if (overlay) {
+      overlay.addEventListener("click", closeSearchFiltersModal);
     }
-  });
-
-  matchesSearchClear.addEventListener("click", () => {
-    matchesSearchInput.value = "";
-    state.searchQuery = "";
-    state.currentPage = 1;
-    matchesSearchClear.style.display = "none";
-    renderMatches();
-    matchesSearchInput.focus();
-  });
+  }
+  
+  if (searchFiltersApply) {
+    searchFiltersApply.addEventListener("click", applySearchFilters);
+  }
+  
+  if (searchFiltersReset) {
+    searchFiltersReset.addEventListener("click", resetSearchFilters);
+  }
+  
+  if (leaguesFilterSearch) {
+    leaguesFilterSearch.addEventListener("input", renderLeaguesFilter);
+  }
+  
+  if (searchMatchesInput) {
+    searchMatchesInput.addEventListener("input", (e) => {
+      const query = e.target.value.trim();
+      if (query) {
+        if (searchMatchesClear) searchMatchesClear.style.display = "flex";
+      } else {
+        if (searchMatchesClear) searchMatchesClear.style.display = "none";
+      }
+    });
+  }
+  
+  if (searchMatchesClear) {
+    searchMatchesClear.addEventListener("click", () => {
+      if (searchMatchesInput) {
+        searchMatchesInput.value = "";
+        if (searchMatchesClear) searchMatchesClear.style.display = "none";
+        if (searchMatchesInput) searchMatchesInput.focus();
+      }
+    });
+  }
 
   // Pagination handlers
   document.addEventListener("click", (e) => {
@@ -2787,7 +2982,11 @@ window.addEventListener("DOMContentLoaded", () => {
     floatBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      toggleBetslipMobile();
+      if (isMobile()) {
+        toggleBetslipMobile();
+      } else {
+        toggleBetslipDesktop();
+      }
     });
     
     floatBtn.addEventListener('touchstart', (e) => {
@@ -2824,6 +3023,45 @@ window.addEventListener("DOMContentLoaded", () => {
       e.stopPropagation();
     });
   }
+  
+  // Desktop close button
+  const closeBtnDesktop = document.getElementById('betslip-close-btn-desktop');
+  if (closeBtnDesktop) {
+    closeBtnDesktop.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      closeBetslipDesktop();
+    });
+  }
+  
+  // Desktop overlay click to close
+  // Close betslip on desktop when clicking outside (but not on the float button)
+  if (!isMobile()) {
+    document.addEventListener('click', (e) => {
+      const betslip = document.querySelector('.betslip.betslip-open-desktop');
+      if (!betslip) return;
+      
+      // Don't close if clicking inside betslip or on float button
+      if (betslip.contains(e.target) || 
+          e.target.closest('#betslip-float-btn') ||
+          e.target.closest('.betslip-close-btn-desktop')) {
+        return;
+      }
+      
+      // Close betslip when clicking outside
+      closeBetslipDesktop();
+    });
+  }
+  
+  // Close betslip on Escape key (desktop)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !isMobile()) {
+      const betslip = document.querySelector('.betslip.betslip-open-desktop');
+      if (betslip) {
+        closeBetslipDesktop();
+      }
+    }
+  });
   
   // Предотвращаем закрытие betslip при клике внутри него
   if (betslip) {
@@ -2916,19 +3154,8 @@ window.addEventListener("DOMContentLoaded", () => {
     updateProfileBalance();
   });
   
-  // Show float button on mobile on load
-  if (isMobile()) {
-    const floatBtn = document.getElementById("betslip-float-btn");
-    if (floatBtn) {
-      floatBtn.style.display = 'flex';
-      floatBtn.classList.remove('hidden');
-    }
-  } else {
-    const floatBtn = document.getElementById("betslip-float-btn");
-    if (floatBtn) {
-      floatBtn.style.display = 'none';
-    }
-  }
+  // Show float button on load
+  updateBetslipFloatButton();
   
   // Handle window resize
   window.addEventListener('resize', () => {

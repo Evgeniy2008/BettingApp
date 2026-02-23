@@ -57,32 +57,18 @@
       </nav>
 
       <main class="layout" data-page="sportsbook">
-        <aside class="sidebar">
-          <div class="sidebar-header">
-            <div class="sidebar-title">FOOTBALL</div>
-            <button class="leagues-search-btn" id="leagues-search-btn" title="Search leagues">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-          </div>
-          <div id="leagues-list" class="leagues-scroll"></div>
-        </aside>
-
-        <section class="content">
+        <section class="content content-full">
           <div class="content-header">
             <div class="content-title">Football</div>
             <div class="content-subtitle">Football • All leagues • Live • Today</div>
           </div>
           <div class="matches-search-wrapper">
-            <div class="matches-search-box">
-              <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M7.33333 12.6667C10.2789 12.6667 12.6667 10.2789 12.6667 7.33333C12.6667 4.38781 10.2789 2 7.33333 2C4.38781 2 2 4.38781 2 7.33333C2 10.2789 4.38781 12.6667 7.33333 12.6667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M14 14L11.1 11.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <button class="search-filter-btn" id="search-filter-btn">
+              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              <input type="text" id="matches-search-input" class="matches-search-input" placeholder="Search by teams, leagues..." />
-              <button id="matches-search-clear" class="matches-search-clear" style="display: none;">×</button>
-            </div>
+              <span>Search & Filters</span>
+            </button>
           </div>
           <div class="matches" id="matches-list"></div>
         </section>
@@ -96,6 +82,7 @@
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="pill" id="slip-count">0</span>
               <button class="betslip-close-btn" id="betslip-close-btn" style="display: none;">×</button>
+              <button class="betslip-close-btn-desktop" id="betslip-close-btn-desktop" style="display: none;">×</button>
             </div>
           </div>
           <div id="slip-items" class="slip-items"></div>
@@ -279,7 +266,10 @@
       </div>
     </div>
 
-    <!-- Floating BetSlip Button (Mobile Only) -->
+    <!-- BetSlip Overlay (Desktop) -->
+    <div id="betslip-modal-overlay" class="betslip-modal-overlay"></div>
+    
+    <!-- Floating BetSlip Button -->
     <button id="betslip-float-btn" class="betslip-float-btn">
       <span class="betslip-float-icon">📋</span>
       <span class="betslip-float-count" id="betslip-float-count">0</span>
@@ -443,22 +433,41 @@
       </div>
     </div>
 
-    <!-- Leagues Search Modal -->
-    <div id="leagues-search-modal" class="modal" style="display: none;">
+    <!-- Search & Filters Modal -->
+    <div id="search-filters-modal" class="modal" style="display: none;">
       <div class="modal-overlay"></div>
-      <div class="modal-content leagues-modal-content">
+      <div class="modal-content search-filters-modal-content">
         <div class="modal-header">
-          <h2>Search Leagues</h2>
-          <button class="modal-close" id="leagues-search-modal-close">×</button>
+          <h2>Search & Filters</h2>
+          <button class="modal-close" id="search-filters-modal-close">×</button>
         </div>
-        <div class="modal-body">
-          <div class="leagues-search-input-wrapper">
-            <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <input type="text" id="leagues-modal-search" class="leagues-modal-search-input" placeholder="Search leagues..." />
+        <div class="modal-body search-filters-body">
+          <div class="search-section">
+            <label class="search-label">Search Matches</label>
+            <div class="search-input-wrapper">
+              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <input type="text" id="search-matches-input" class="search-matches-input" placeholder="Search by teams, leagues..." />
+              <button id="search-matches-clear" class="search-clear-btn" style="display: none;">×</button>
+            </div>
           </div>
-          <div id="leagues-modal-list" class="leagues-modal-list"></div>
+          
+          <div class="leagues-filter-section">
+            <label class="search-label">Select Leagues</label>
+            <div class="leagues-filter-search-wrapper">
+              <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <input type="text" id="leagues-filter-search" class="leagues-filter-search-input" placeholder="Search leagues..." />
+            </div>
+            <div id="leagues-filter-list" class="leagues-filter-list"></div>
+          </div>
+          
+          <div class="search-filters-actions">
+            <button class="ghost-btn" id="search-filters-reset">Reset</button>
+            <button class="primary-btn" id="search-filters-apply">Apply</button>
+          </div>
         </div>
       </div>
     </div>
