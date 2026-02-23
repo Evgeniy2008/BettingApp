@@ -619,7 +619,16 @@ function renderLeagues() {
   // But keeping it for compatibility with other parts of the code
 }
 
-// Check if match has odds available
+// Convert percentage to odds: odds = 100 / percentage
+function percentToOdds(percentStr) {
+  if (!percentStr || typeof percentStr !== 'string') return null;
+  const percent = parseFloat(percentStr.replace('%', ''));
+  if (isNaN(percent) || percent <= 0) return null;
+  const odds = 100 / percent;
+  return Math.round(odds * 100) / 100; // Round to 2 decimal places
+}
+
+// Check if match has odds available (using predictions API)
 async function checkMatchHasOdds(match) {
   if (!match.matchId && !match.id) {
     return false;
@@ -633,7 +642,7 @@ async function checkMatchHasOdds(match) {
   }
   
   try {
-    const url = `${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`;
+    const url = `${PHP_API_BASE}/predictions.php?fixture=${fixtureId}`;
     const res = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
@@ -649,7 +658,13 @@ async function checkMatchHasOdds(match) {
     }
     
     const data = await res.json();
-    const hasOdds = data.ok && data.odds && Array.isArray(data.odds) && data.odds.length > 0;
+    // Check if predictions data exists and has percent data
+    const hasOdds = data.ok && 
+                    data.response && 
+                    Array.isArray(data.response) && 
+                    data.response.length > 0 &&
+                    data.response[0].predictions &&
+                    data.response[0].predictions.percent;
     oddsCheckCache.set(fixtureId, hasOdds);
     return hasOdds;
   } catch (error) {
@@ -659,7 +674,7 @@ async function checkMatchHasOdds(match) {
   }
 }
 
-// Get match odds (Home, Draw, Away) from API
+// Get match odds (Home, Draw, Away) from Predictions API
 async function getMatchOdds(match) {
   if (!match.matchId && !match.id) {
     return null;
@@ -668,7 +683,7 @@ async function getMatchOdds(match) {
   const fixtureId = match.matchId || match.id;
   
   try {
-    const url = `${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`;
+    const url = `${PHP_API_BASE}/predictions.php?fixture=${fixtureId}`;
     const res = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
@@ -683,48 +698,32 @@ async function getMatchOdds(match) {
     }
     
     const data = await res.json();
-    if (!data.ok || !data.odds || !Array.isArray(data.odds) || data.odds.length === 0) {
+    if (!data.ok || !data.response || !Array.isArray(data.response) || data.response.length === 0) {
       return null;
     }
     
-    // Find Home, Draw, Away odds from all bookmakers
-    let homeOdd = null;
-    let drawOdd = null;
-    let awayOdd = null;
+    const prediction = data.response[0];
+    if (!prediction.predictions || !prediction.predictions.percent) {
+      return null;
+    }
     
-    data.odds.forEach(bookmaker => {
-      if (!bookmaker.bets || !Array.isArray(bookmaker.bets)) return;
-      
-      bookmaker.bets.forEach(bet => {
-        // Look for "Fulltime Result" or "1x2" bet type
-        const betName = (bet.name || '').toLowerCase();
-        if (betName.includes('fulltime result') || betName.includes('1x2') || betName === '1x2') {
-          if (!bet.values || !Array.isArray(bet.values)) return;
-          
-          bet.values.forEach(value => {
-            const label = String(value.value || '').trim();
-            const odd = parseFloat(value.odd) || 0;
-            
-            if (odd > 0) {
-              if (label === 'Home' || label === '1') {
-                if (!homeOdd || odd > homeOdd) homeOdd = odd;
-              } else if (label === 'Draw' || label === 'X') {
-                if (!drawOdd || odd > drawOdd) drawOdd = odd;
-              } else if (label === 'Away' || label === '2') {
-                if (!awayOdd || odd > awayOdd) awayOdd = odd;
-              }
-            }
-          });
-        }
-      });
-    });
+    // Convert percentages to odds: odds = 100 / percentage
+    const percent = prediction.predictions.percent;
+    const homeOdd = percentToOdds(percent.home);
+    const drawOdd = percentToOdds(percent.draw);
+    const awayOdd = percentToOdds(percent.away);
     
-    return {
-      hasOdds: homeOdd !== null || drawOdd !== null || awayOdd !== null,
-      home: homeOdd,
-      draw: drawOdd,
-      away: awayOdd
-    };
+    if (homeOdd && drawOdd && awayOdd) {
+      return {
+        hasOdds: true,
+        home: homeOdd,
+        draw: drawOdd,
+        away: awayOdd,
+        prediction: prediction.predictions // Store full prediction data for reference
+      };
+    }
+    
+    return null;
   } catch (error) {
     console.warn(`[Render] Error getting odds for match ${fixtureId}:`, error);
     return null;
@@ -747,6 +746,8 @@ async function filterMatchesWithOdds(matches, targetCount) {
     const batch = matches.slice(i, i + batchSize);
     const batchPromises = batch.map(async (match) => {
       checkedCount++;
+      
+      // First, try to get odds from predictions API
       const oddsData = await getMatchOdds(match);
       if (oddsData && oddsData.hasOdds) {
         // Add odds data to match object
@@ -757,6 +758,34 @@ async function filterMatchesWithOdds(matches, targetCount) {
         };
         return match;
       }
+      
+      // If predictions API doesn't have odds, check if match has original odds
+      // Use original odds if available (from parsing)
+      if (match.odds && (match.odds.homeWin > 0 || match.odds.draw > 0 || match.odds.awayWin > 0)) {
+        match.loadedOdds = {
+          home: match.odds.homeWin || 0,
+          draw: match.odds.draw || 0,
+          away: match.odds.awayWin || 0
+        };
+        return match;
+      }
+      
+      // Also check allOutcomes for 1x2 odds
+      if (match.allOutcomes && Array.isArray(match.allOutcomes)) {
+        const homeWin = match.allOutcomes.find((o) => o.label === "1" && o.type === "1x2")?.odd || 0;
+        const draw = match.allOutcomes.find((o) => o.label === "X" && o.type === "1x2")?.odd || 0;
+        const awayWin = match.allOutcomes.find((o) => o.label === "2" && o.type === "1x2")?.odd || 0;
+        
+        if (homeWin > 0 || draw > 0 || awayWin > 0) {
+          match.loadedOdds = {
+            home: homeWin,
+            draw: draw,
+            away: awayWin
+          };
+          return match;
+        }
+      }
+      
       return null;
     });
     
@@ -815,8 +844,55 @@ async function renderMatches() {
 
   // Apply league filter
   if (state.selectedLeagueIds.length > 0) {
-    ms = ms.filter((m) => state.selectedLeagueIds.includes(m.leagueId));
+    console.log('[Render] Filtering by selected league IDs:', state.selectedLeagueIds);
+    console.log('[Render] Sample match leagueIds before filter:', ms.slice(0, 5).map(m => ({ id: m.id, leagueId: m.leagueId, leagueName: m.leagueName })));
+    
+    ms = ms.filter((m) => {
+      // Direct match by leagueId
+      if (state.selectedLeagueIds.includes(m.leagueId)) {
+        return true;
+      }
+      
+      // Also check by league info (for Premier League with apiId=39)
+      const matchLeagueInfo = leagues.find(l => l.id === m.leagueId || String(l.apiId) === String(m.leagueId));
+      
+      if (matchLeagueInfo || m.leagueId === '39' || String(m.leagueId) === '39') {
+        for (const selectedId of state.selectedLeagueIds) {
+          const selectedLeagueInfo = leagues.find(l => l.id === selectedId);
+          
+          if (selectedLeagueInfo) {
+            // Match by apiId (for Premier League)
+            const matchApiId = matchLeagueInfo?.apiId || (m.leagueId === '39' || String(m.leagueId) === '39' ? 39 : null);
+            if (matchApiId && selectedLeagueInfo.apiId && matchApiId === selectedLeagueInfo.apiId) {
+              return true;
+            }
+            // Match by isPremierLeague flag
+            if (matchLeagueInfo?.isPremierLeague && selectedLeagueInfo.isPremierLeague) {
+              return true;
+            }
+            // Match by league name (for Premier League)
+            if (m.leagueName && m.leagueName.toLowerCase().includes('premier league') && 
+                m.leagueName.toLowerCase().includes('england') &&
+                selectedLeagueInfo.name && selectedLeagueInfo.name.toLowerCase().includes('premier league') &&
+                selectedLeagueInfo.name.toLowerCase().includes('england')) {
+              return true;
+            }
+          } else if (selectedId === '39' || String(selectedId) === '39') {
+            // If selected ID is '39' and match leagueId is also '39' or match is Premier League
+            if (m.leagueId === '39' || String(m.leagueId) === '39' ||
+                (m.leagueName && m.leagueName.toLowerCase().includes('premier league') && 
+                 m.leagueName.toLowerCase().includes('england'))) {
+              return true;
+            }
+          }
+        }
+      }
+      
+      return false;
+    });
+    
     console.log(`[Render] Filtered by selected leagues (${state.selectedLeagueIds.length}): ${ms.length} matches`);
+    console.log('[Render] Sample match leagueIds after filter:', ms.slice(0, 5).map(m => ({ id: m.id, leagueId: m.leagueId, leagueName: m.leagueName })));
   } else if (state.activeLeagueId !== "all") {
     ms = ms.filter((m) => m.leagueId === state.activeLeagueId);
     console.log(`[Render] Filtered by active league (${state.activeLeagueId}): ${ms.length} matches`);
@@ -2646,7 +2722,161 @@ function renderLeaguesFilter() {
   }).join('');
 }
 
-function applySearchFilters() {
+// Load matches for a specific league via fixtures API
+async function loadMatchesByLeague(leagueId) {
+  try {
+    console.log('[App] ===== Loading matches for league =====');
+    console.log('[App] League ID:', leagueId);
+    console.log('[App] Available leagues:', leagues.map(l => ({ id: l.id, name: l.name, apiId: l.apiId })));
+    
+    // Find league info to get apiId
+    const leagueInfo = leagues.find(l => l.id === leagueId || String(l.apiId) === String(leagueId));
+    console.log('[App] Found league info:', leagueInfo);
+    
+    const apiId = leagueInfo?.apiId || leagueId;
+    console.log('[App] Using API ID:', apiId);
+    
+    // Check if this is Premier League (id=39)
+    const isPremierLeague = String(apiId) === '39' || String(leagueId) === '39' || 
+                           (leagueInfo && (leagueInfo.isPremierLeague === true || 
+                            (leagueInfo.name && leagueInfo.name.toLowerCase().includes('premier league') && 
+                             leagueInfo.name.toLowerCase().includes('england'))));
+    
+    console.log('[App] Is Premier League?', isPremierLeague);
+    
+    if (isPremierLeague) {
+      // Try multiple date ranges to get more matches
+      const today = new Date();
+      const dates = [];
+      
+      // Get matches for today and next 7 days
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        dates.push(date.toISOString().split('T')[0]);
+      }
+      
+      console.log('[App] Fetching Premier League matches for dates:', dates);
+      
+      let allMatches = [];
+      
+      // Fetch matches for each date
+      for (const date of dates) {
+        const url = `${PHP_API_BASE}/fixtures.php?league=39&season=2025&date=${date}`;
+        console.log('[App] Fetching from URL:', url);
+        
+        try {
+          const res = await fetch(url, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+              'Pragma': 'no-cache'
+            }
+          });
+          
+          console.log('[App] Response status:', res.status, res.statusText);
+          
+          if (!res.ok) {
+            console.warn('[App] Failed to load fixtures for date', date, ':', res.status);
+            continue;
+          }
+          
+          const data = await res.json();
+          console.log('[App] Response data for', date, ':', data);
+          
+          if (data.ok && data.matches && Array.isArray(data.matches)) {
+            console.log(`[App] Found ${data.matches.length} matches for date ${date}`);
+            allMatches = allMatches.concat(data.matches);
+          } else {
+            console.log('[App] No matches or invalid format for date', date);
+          }
+        } catch (err) {
+          console.error('[App] Error fetching for date', date, ':', err);
+        }
+      }
+      
+      console.log(`[App] Total matches loaded: ${allMatches.length}`);
+      console.log('[App] Matches data:', allMatches);
+      
+      if (allMatches.length === 0) {
+        console.warn('[App] No matches found for Premier League');
+        return [];
+      }
+      
+      // Find Premier League in leagues array to get correct leagueId
+      const premierLeagueInList = leagues.find(l => 
+        l.apiId === 39 || 
+        String(l.apiId) === '39' || 
+        l.isPremierLeague === true ||
+        (l.name && l.name.toLowerCase().includes('premier league') && l.name.toLowerCase().includes('england'))
+      );
+      
+      console.log('[App] Premier League in leagues array:', premierLeagueInList);
+      const correctLeagueId = premierLeagueInList ? premierLeagueInList.id : '39';
+      console.log('[App] Using leagueId for converted matches:', correctLeagueId);
+      
+      // Convert fixtures format to match format
+      const convertedMatches = allMatches.map((m, idx) => {
+        const leagueName = m.leagueName || m.league || "Unknown League";
+        
+        // Convert time to user's local timezone
+        let timeStr = "TBD";
+        if (m.startDateTimeISO) {
+          try {
+            const matchDate = new Date(m.startDateTimeISO);
+            if (!isNaN(matchDate.getTime())) {
+              const day = String(matchDate.getDate()).padStart(2, '0');
+              const month = String(matchDate.getMonth() + 1).padStart(2, '0');
+              const hours = String(matchDate.getHours()).padStart(2, '0');
+              const minutes = String(matchDate.getMinutes()).padStart(2, '0');
+              timeStr = `${day}.${month} ${hours}:${minutes}`;
+            }
+          } catch (e) {
+            timeStr = m.startTime ? `${m.startDate || ""} ${m.startTime}`.trim() : "TBD";
+          }
+        } else if (m.startTime) {
+          timeStr = `${m.startDate || ""} ${m.startTime}`.trim();
+        }
+        
+        return {
+          id: m.matchId || `m${idx}`,
+          matchId: m.matchId,
+          lineId: m.lineId || m.matchId,
+          detailUrl: null,
+          leagueId: correctLeagueId, // Use ID from leagues array, not API league ID
+          leagueName: leagueName,
+          leagueLogo: m.leagueLogo || null,
+          time: timeStr,
+          home: m.home || "",
+          away: m.away || "",
+          homeLogo: m.homeLogo || null,
+          awayLogo: m.awayLogo || null,
+          odds: { homeWin: 0, draw: 0, awayWin: 0 },
+          allOutcomes: [],
+          isLive: m.isLive || false,
+          liveTime: m.liveTime,
+          livePeriod: m.livePeriod,
+          score: m.score
+        };
+      });
+      
+      console.log('[App] Converted matches:', convertedMatches);
+      return convertedMatches;
+    }
+    
+    console.log('[App] Not Premier League, returning empty array');
+    return [];
+  } catch (err) {
+    console.error('[App] Error loading matches by league:', err);
+    console.error('[App] Error stack:', err.stack);
+    return [];
+  }
+}
+
+async function applySearchFilters() {
+  console.log('[App] ===== applySearchFilters called =====');
+  
   // Get search query
   const searchInput = document.getElementById("search-matches-input");
   if (searchInput) {
@@ -2657,9 +2887,85 @@ function applySearchFilters() {
   const checkboxes = document.querySelectorAll('.league-filter-checkbox:checked');
   state.selectedLeagueIds = Array.from(checkboxes).map(cb => cb.value);
   
+  console.log('[App] Selected league IDs:', state.selectedLeagueIds);
+  console.log('[App] Current matches count:', matches.length);
+  
   // Reset activeLeagueId if leagues are selected via filter
   if (state.selectedLeagueIds.length > 0) {
     state.activeLeagueId = "all"; // Clear active league when using filter
+    
+    // Check if Premier League (id=39) is selected
+    // Premier League can be identified by apiId=39 or isPremierLeague flag
+    for (const selectedId of state.selectedLeagueIds) {
+      console.log('[App] Checking league ID:', selectedId);
+      const leagueInfo = leagues.find(l => l.id === selectedId || String(l.apiId) === String(selectedId));
+      console.log('[App] League info found:', leagueInfo);
+      
+      // Check if this is Premier League
+      const isPremierLeague = leagueInfo && (
+        String(leagueInfo.apiId) === '39' || 
+        selectedId === '39' ||
+        leagueInfo.isPremierLeague === true ||
+        (leagueInfo.name && leagueInfo.name.toLowerCase().includes('premier league') && 
+         leagueInfo.name.toLowerCase().includes('england'))
+      );
+      
+      console.log('[App] Is Premier League?', isPremierLeague);
+      
+      if (isPremierLeague) {
+        console.log('[App] ===== Premier League detected, loading matches from fixtures API =====');
+        // Load matches from fixtures API for Premier League
+        const premierLeagueMatches = await loadMatchesByLeague(selectedId);
+        console.log('[App] Premier League matches loaded:', premierLeagueMatches.length);
+        console.log('[App] Premier League matches data:', premierLeagueMatches);
+        
+        if (premierLeagueMatches.length > 0) {
+          console.log('[App] Processing Premier League matches...');
+          
+          // Create a map of existing matches by matchId
+          const existingMatchesMap = new Map();
+          matches.forEach(m => {
+            if (m.matchId) {
+              existingMatchesMap.set(m.matchId, m);
+            }
+          });
+          
+          // Update or add Premier League matches
+          let updatedCount = 0;
+          let addedCount = 0;
+          
+          premierLeagueMatches.forEach(newMatch => {
+            if (!newMatch.matchId) return;
+            
+            const existingMatch = existingMatchesMap.get(newMatch.matchId);
+            if (existingMatch) {
+              // Update existing match with correct leagueId
+              existingMatch.leagueId = newMatch.leagueId;
+              existingMatch.leagueName = newMatch.leagueName;
+              existingMatch.leagueLogo = newMatch.leagueLogo;
+              existingMatch.isLive = newMatch.isLive;
+              existingMatch.liveTime = newMatch.liveTime;
+              existingMatch.livePeriod = newMatch.livePeriod;
+              existingMatch.score = newMatch.score;
+              existingMatch.time = newMatch.time;
+              updatedCount++;
+            } else {
+              // Add new match
+              matches.push(newMatch);
+              existingMatchesMap.set(newMatch.matchId, newMatch);
+              addedCount++;
+            }
+          });
+          
+          console.log(`[App] ===== Updated ${updatedCount} and added ${addedCount} Premier League matches =====`);
+          console.log('[App] Total matches now:', matches.length);
+          console.log('[App] Sample Premier League match:', premierLeagueMatches[0]);
+        } else {
+          console.warn('[App] ===== No Premier League matches found from fixtures API =====');
+        }
+        break; // Only load once
+      }
+    }
   }
   
   // Reset to first page
@@ -2672,6 +2978,7 @@ function applySearchFilters() {
   closeSearchFiltersModal();
   
   // Re-render matches (this will update subtitle)
+  console.log('[App] Rendering matches, total count:', matches.length);
   renderMatches();
 }
 
@@ -3366,8 +3673,8 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
       return;
     }
     
-    console.log('[Match Detail] Fetching odds for fixture:', fixtureId);
-    const url = `${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`;
+    console.log('[Match Detail] Fetching predictions for fixture:', fixtureId);
+    const url = `${PHP_API_BASE}/predictions.php?fixture=${fixtureId}`;
     
     const res = await fetch(url);
     if (!res.ok) {
@@ -3375,102 +3682,246 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     }
     
     const data = await res.json();
-    console.log('[Match Detail] Data received, odds count:', data.odds?.length || 0);
+    console.log('[Match Detail] Predictions data received');
     
-    if (!data.ok || !data.odds || data.odds.length === 0) {
-      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Коэффициенты не найдены</div>';
+    if (!data.ok || !data.response || !Array.isArray(data.response) || data.response.length === 0) {
+      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Прогнозы не найдены</div>';
       return;
     }
     
-    // Render odds as blocks - grouped by bet type (not by bookmaker)
-    // Group all bets by type across all bookmakers
-    const allBetsByType = {};
+    const prediction = data.response[0];
+    if (!prediction.predictions) {
+      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Прогнозы не найдены</div>';
+      return;
+    }
     
-    data.odds.forEach(bookmaker => {
-      if (!bookmaker.bets || !Array.isArray(bookmaker.bets) || bookmaker.bets.length === 0) return;
-      
-      bookmaker.bets.forEach(bet => {
-        if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) return;
-        
-        const betName = bet.name || 'Unknown Bet';
-        if (!allBetsByType[betName]) {
-          allBetsByType[betName] = [];
-        }
-        
-        // Add bookmaker info to each bet value
-        bet.values.forEach(value => {
-          allBetsByType[betName].push({
-            ...value,
-            bookmakerId: bookmaker.id,
-            bookmakerName: bookmaker.name || 'Unknown',
-            betId: bet.id
-          });
-        });
-      });
-    });
+    const pred = prediction.predictions;
+    const matchId = matchObj?.id || fixtureId;
     
-    // Render each bet type as a block
     let html = '<div class="match-detail-odds-blocks">';
     
-    Object.keys(allBetsByType).forEach(betName => {
-      const betValues = allBetsByType[betName];
+    // 1. 1X2 (Main Result)
+    if (pred.percent) {
+      const homeOdd = percentToOdds(pred.percent.home);
+      const drawOdd = percentToOdds(pred.percent.draw);
+      const awayOdd = percentToOdds(pred.percent.away);
       
-      // For each bet type, find best odds (highest) for each unique outcome
-      const bestOdds = {};
-      betValues.forEach(item => {
-        const label = item.value;
-        const odd = parseFloat(item.odd);
-        if (isNaN(odd) || odd <= 0) return;
+      if (homeOdd && drawOdd && awayOdd) {
+        html += `<div class="match-detail-odds-block">`;
+        html += `<div class="match-detail-odds-block-title">1X2</div>`;
+        html += `<div class="match-detail-odds-block-content">`;
         
-        const key = label;
-        if (!bestOdds[key] || odd > bestOdds[key].odd) {
-          bestOdds[key] = {
-            label,
-            odd,
-            bookmakerId: item.bookmakerId,
-            bookmakerName: item.bookmakerName,
-            betId: item.betId
-          };
+        const outcomes = [
+          { label: '1', odd: homeOdd, value: 'Home', percent: pred.percent.home },
+          { label: 'X', odd: drawOdd, value: 'Draw', percent: pred.percent.draw },
+          { label: '2', odd: awayOdd, value: 'Away', percent: pred.percent.away }
+        ];
+        
+        outcomes.forEach(item => {
+          const outcomeId = `${fixtureId}_1x2_${item.value}_${item.odd}`;
+          const isActive = state.slip.some(s => {
+            return s.outcomeId === outcomeId || 
+                   (s.matchId === matchId && 
+                    s.betName === '1X2' && 
+                    s.value === item.value &&
+                    Math.abs(s.odd - item.odd) < 0.01);
+          });
+          
+          html += `
+            <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
+                    data-match-id="${matchId}"
+                    data-fixture-id="${fixtureId}"
+                    data-bookmaker-id="predictions"
+                    data-bookmaker-name="Predictions"
+                    data-bet-id="1x2"
+                    data-bet-name="1X2"
+                    data-value="${item.value}"
+                    data-odd="${item.odd}"
+                    data-outcome-id="${outcomeId}">
+              <span class="match-detail-odds-btn-label">${item.label}</span>
+              <span class="match-detail-odds-btn-value">${formatOdd(item.odd)}</span>
+              <span style="font-size: 11px; opacity: 0.7; margin-top: 2px;">${item.percent}</span>
+            </button>
+          `;
+        });
+        
+        html += `</div></div>`;
+      }
+    }
+    
+    // 2. Double Chance (Win or Draw)
+    if (pred.win_or_draw !== null && pred.win_or_draw !== undefined) {
+      html += `<div class="match-detail-odds-block">`;
+      html += `<div class="match-detail-odds-block-title">Double Chance</div>`;
+      html += `<div class="match-detail-odds-block-content">`;
+      
+      if (pred.winner) {
+        const winnerName = pred.winner.name || 'Winner';
+        const winnerComment = pred.winner.comment || '';
+        const winnerPercent = pred.percent ? (pred.winner.id === prediction.teams?.home?.id ? pred.percent.home : pred.percent.away) : null;
+        const winnerOdd = winnerPercent ? percentToOdds(winnerPercent) : null;
+        
+        if (winnerOdd) {
+          const outcomeId = `${fixtureId}_double_chance_winner_${winnerOdd}`;
+          const isActive = state.slip.some(s => s.outcomeId === outcomeId);
+          
+          html += `
+            <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
+                    data-match-id="${matchId}"
+                    data-fixture-id="${fixtureId}"
+                    data-bookmaker-id="predictions"
+                    data-bet-id="double_chance"
+                    data-bet-name="Double Chance"
+                    data-value="Win or Draw"
+                    data-odd="${winnerOdd}"
+                    data-outcome-id="${outcomeId}">
+              <span class="match-detail-odds-btn-label">${winnerName} ${winnerComment}</span>
+              <span class="match-detail-odds-btn-value">${formatOdd(winnerOdd)}</span>
+            </button>
+          `;
+        } else {
+          html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
+        }
+      } else {
+        html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
+      }
+      
+      html += `</div></div>`;
+    }
+    
+    // 3. Goals Prediction
+    html += `<div class="match-detail-odds-block">`;
+    html += `<div class="match-detail-odds-block-title">Goals Prediction</div>`;
+    html += `<div class="match-detail-odds-block-content">`;
+    
+    if (pred.goals && (pred.goals.home || pred.goals.away)) {
+      if (pred.goals.home) {
+        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
+          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Home</div>
+          <div style="font-size: 16px; color: rgba(248,113,113,0.9); font-weight: 600;">${pred.goals.home}</div>
+        </div>`;
+      } else {
+        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
+          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Home</div>
+          <div style="font-size: 14px; color: rgba(232,232,234,0.5);">No information</div>
+        </div>`;
+      }
+      
+      if (pred.goals.away) {
+        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px;">
+          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Away</div>
+          <div style="font-size: 16px; color: rgba(248,113,113,0.9); font-weight: 600;">${pred.goals.away}</div>
+        </div>`;
+      } else {
+        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px;">
+          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Away</div>
+          <div style="font-size: 14px; color: rgba(232,232,234,0.5);">No information</div>
+        </div>`;
+      }
+    } else {
+      html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
+    }
+    
+    html += `</div></div>`;
+    
+    // 4. Comparison Statistics
+    html += `<div class="match-detail-odds-block">`;
+    html += `<div class="match-detail-odds-block-title">Team Comparison</div>`;
+    html += `<div class="match-detail-odds-block-content">`;
+    
+    if (prediction.comparison) {
+      const comparisons = [
+        { key: 'form', label: 'Form' },
+        { key: 'att', label: 'Attack' },
+        { key: 'def', label: 'Defense' },
+        { key: 'goals', label: 'Goals' },
+        { key: 'h2h', label: 'H2H' },
+        { key: 'total', label: 'Total' }
+      ];
+      
+      let hasAnyComparison = false;
+      comparisons.forEach(comp => {
+        if (prediction.comparison[comp.key]) {
+          hasAnyComparison = true;
+          const homePercent = prediction.comparison[comp.key].home || '0%';
+          const awayPercent = prediction.comparison[comp.key].away || '0%';
+          
+          html += `<div style="padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
+            <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 8px;">${comp.label}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="flex: 1; text-align: left;">
+                <div style="font-size: 14px; color: rgba(248,113,113,0.9); font-weight: 600;">${homePercent}</div>
+                <div style="font-size: 11px; color: rgba(232,232,234,0.5);">Home</div>
+              </div>
+              <div style="flex: 1; text-align: right;">
+                <div style="font-size: 14px; color: rgba(248,113,113,0.9); font-weight: 600;">${awayPercent}</div>
+                <div style="font-size: 11px; color: rgba(232,232,234,0.5);">Away</div>
+              </div>
+            </div>
+          </div>`;
         }
       });
       
-      html += `<div class="match-detail-odds-block">`;
-      html += `<div class="match-detail-odds-block-title">${betName}</div>`;
-      html += `<div class="match-detail-odds-block-content">`;
+      if (!hasAnyComparison) {
+        html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
+      }
+    } else {
+      html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
+    }
+    
+    html += `</div></div>`;
+    
+    // 5. Under/Over Statistics (from teams data)
+    html += `<div class="match-detail-odds-block">`;
+    html += `<div class="match-detail-odds-block-title">Under/Over Statistics</div>`;
+    html += `<div class="match-detail-odds-block-content">`;
+    
+    if (prediction.teams?.home?.league?.under_over || prediction.teams?.away?.league?.under_over) {
+      const totals = ['0.5', '1.5', '2.5', '3.5'];
+      let hasAnyTotal = false;
       
-      Object.values(bestOdds).forEach(item => {
-        const outcomeId = `${fixtureId}_${item.bookmakerId}_${item.betId}_${item.label}_${item.odd}`;
-        const matchId = matchObj?.id || fixtureId;
+      totals.forEach(total => {
+        const homeData = prediction.teams?.home?.league?.under_over?.[total];
+        const awayData = prediction.teams?.away?.league?.under_over?.[total];
         
-        // Check if this outcome is in slip
-        const isActive = state.slip.some(s => {
-          return s.outcomeId === outcomeId || 
-                 (s.matchId === matchId && 
-                  s.bookmakerId === String(item.bookmakerId) && 
-                  s.betId === String(item.betId) && 
-                  s.value === item.label &&
-                  Math.abs(s.odd - item.odd) < 0.01);
-        });
-        
-        html += `
-          <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
-                  data-match-id="${matchId}"
-                  data-fixture-id="${fixtureId}"
-                  data-bookmaker-id="${item.bookmakerId}"
-                  data-bookmaker-name="${item.bookmakerName}"
-                  data-bet-id="${item.betId}"
-                  data-bet-name="${betName}"
-                  data-value="${item.label}"
-                  data-odd="${item.odd}"
-                  data-outcome-id="${outcomeId}">
-            <span class="match-detail-odds-btn-label">${item.label}</span>
-            <span class="match-detail-odds-btn-value">${formatOdd(item.odd)}</span>
-          </button>
-        `;
+        if (homeData || awayData) {
+          hasAnyTotal = true;
+          html += `<div style="padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
+            <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 8px;">Total ${total}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div>
+                <div style="font-size: 11px; color: rgba(232,232,234,0.5); margin-bottom: 4px;">Home</div>
+                <div style="font-size: 12px; color: rgba(232,232,234,0.8);">
+                  ${homeData ? `Over: ${homeData.over || 0} | Under: ${homeData.under || 0}` : 'No information'}
+                </div>
+              </div>
+              <div>
+                <div style="font-size: 11px; color: rgba(232,232,234,0.5); margin-bottom: 4px;">Away</div>
+                <div style="font-size: 12px; color: rgba(232,232,234,0.8);">
+                  ${awayData ? `Over: ${awayData.over || 0} | Under: ${awayData.under || 0}` : 'No information'}
+                </div>
+              </div>
+            </div>
+          </div>`;
+        }
       });
       
-      html += `</div></div>`;
-    });
+      if (!hasAnyTotal) {
+        html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
+      }
+    } else {
+      html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
+    }
+    
+    html += `</div></div>`;
+    
+    // 6. Prediction Advice
+    if (pred.advice) {
+      html += `<div class="match-detail-prediction-advice" style="padding: 20px; margin-top: 20px; background: rgba(255, 255, 255, 0.05); border-radius: 12px;">
+        <div style="font-size: 14px; color: rgba(232, 232, 234, 0.7); margin-bottom: 8px;">Прогноз:</div>
+        <div style="font-size: 16px; color: rgba(248, 113, 113, 0.9); font-weight: 600;">${pred.advice}</div>
+      </div>`;
+    }
     
     html += '</div>';
     
