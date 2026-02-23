@@ -24,9 +24,6 @@
           </div>
         </div>
         <div class="header-right">
-          <button class="live-matches-btn" id="live-matches-btn">
-            Live Matches
-          </button>
           <div class="header-profile-mobile" id="header-profile-mobile" style="display: none;">
             <div class="profile-balance-mobile" id="profile-balance-mobile">$0.00</div>
             <button class="profile-icon-btn" id="profile-icon-btn" title="Profile">
@@ -61,6 +58,10 @@
           <div class="content-header">
             <div class="content-title">Football</div>
             <div class="content-subtitle">Football • All leagues • Live • Today</div>
+          </div>
+          <div class="match-type-tabs">
+            <button class="match-type-tab match-type-tab-active" data-match-type="prematch" id="prematch-tab">Pre Match</button>
+            <button class="match-type-tab" data-match-type="live" id="live-tab">Live</button>
           </div>
           <div class="matches-search-wrapper">
             <button class="search-filter-btn" id="search-filter-btn">
@@ -115,6 +116,12 @@
 
       <main class="page page-hidden" data-page="wallet">
         <section class="card">
+          <button class="back-btn" onclick="switchTab('sportsbook')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
           <h2>Wallet</h2>
           <p>Cryptocurrency deposits, limits and withdrawal requests.</p>
           <div class="grid-2">
@@ -184,6 +191,12 @@
 
       <main class="page page-hidden" data-page="bets">
         <section class="card">
+          <button class="back-btn" onclick="switchTab('sportsbook')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
           <h2>My Bets</h2>
           <p>View and track all your betting history.</p>
           
@@ -213,6 +226,12 @@
 
       <main class="page page-hidden" data-page="favorites">
         <section class="card">
+          <button class="back-btn" onclick="switchTab('sportsbook')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
           <h2>Favorites</h2>
           <p>Your favorite leagues and matches.</p>
           <div class="favorites-tabs">
@@ -231,6 +250,12 @@
 
       <main class="page page-hidden" data-page="profile">
         <section class="card">
+          <button class="back-btn" onclick="switchTab('sportsbook')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back
+          </button>
           <h2>Profile</h2>
           <p>Telegram account and settings.</p>
           <div class="grid-2 mt">
@@ -274,6 +299,9 @@
       <span class="betslip-float-icon">📋</span>
       <span class="betslip-float-count" id="betslip-float-count">0</span>
     </button>
+
+    <!-- Fixed Live Button -->
+    <button id="fixed-live-btn" class="fixed-live-btn">Live</button>
 
     <!-- BetSlip Overlay (Mobile Only) -->
     <div id="betslip-overlay" class="betslip-overlay" style="display: none;"></div>

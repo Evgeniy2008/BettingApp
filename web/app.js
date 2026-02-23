@@ -37,6 +37,7 @@ const SNAPSHOT_FILE = "ParseInfoNew.html";
 
 let leagues = [{ id: "all", country: "🌐", name: "All leagues" }];
 let matches = []; // Global matches array - will be updated on each load
+let allMatchesForLeagues = []; // All matches for extracting leagues (without odds filtering)
 
 // Cache for odds check results (to avoid checking same match multiple times)
 const oddsCheckCache = new Map();
@@ -108,11 +109,14 @@ function showMatchesSkeleton() {
 
 // Load matches from PHP API (API Sports)
 async function loadMatches(forceRefresh = false) {
+  // Preserve current matchType before loading
+  const preservedMatchType = state.matchType || 'prematch';
+  
   // Show skeleton while loading
   showMatchesSkeleton();
   
   const loadStartTime = Date.now();
-  console.log(`[App] Loading matches at ${new Date().toISOString()}${forceRefresh ? ' (FORCE REFRESH - NO CACHE)' : ''}`);
+  console.log(`[App] Loading matches at ${new Date().toISOString()}${forceRefresh ? ' (FORCE REFRESH - NO CACHE)' : ''}, preserving matchType: ${preservedMatchType}`);
   
   try {
     // Use PHP API to get matches from API Sports
@@ -302,8 +306,14 @@ async function loadMatches(forceRefresh = false) {
       console.log(`[App] First 3 matches:`, matches.slice(0, 3).map(m => `${m.home} vs ${m.away} (${m.matchId || 'no-id'})`));
     }
     
-    // Reset pagination to first page when new data is loaded
+    // Reset pagination to first page when new data is loaded (but preserve matchType)
     state.currentPage = 1;
+    
+    // Restore preserved matchType (in case it was somehow reset)
+    if (preservedMatchType && state.matchType !== preservedMatchType) {
+      console.log(`[App] Restoring matchType from ${state.matchType} to ${preservedMatchType}`);
+      state.matchType = preservedMatchType;
+    }
     
     // Clear odds check cache when new matches are loaded
     oddsCheckCache.clear();
@@ -311,9 +321,18 @@ async function loadMatches(forceRefresh = false) {
     // Store timestamp of last update
     window.lastUpdateTime = new Date().toISOString();
     
-    // Force re-render
+    // Load all matches for leagues extraction (after main matches are loaded)
+    loadAllMatchesForLeagues();
+    
+    // Force re-render - preserve current matchType
     renderLeagues();
-    renderMatches();
+    // Only re-render if we're on sportsbook tab, and preserve matchType
+    if (state.activeTab === 'sportsbook') {
+      // Preserve matchType - don't reset it
+      renderMatches();
+      // Update tabs to reflect current matchType
+      updateMatchTypeTabs();
+    }
   } catch (err) {
     // Show error to user
     console.error('[App] Error loading matches:', err);
@@ -326,9 +345,246 @@ async function loadMatches(forceRefresh = false) {
   }
 }
 
+// Load Premier League (id=39) from API
+async function loadPremierLeague() {
+  try {
+    console.log('[App] Loading Premier League (id=39) from API...');
+    const url = `${PHP_API_BASE}/leagues.php?id=39&country=england`;
+    
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache'
+      }
+    });
+    
+    if (!res.ok) {
+      console.warn('[App] Failed to load Premier League:', res.status);
+      return null;
+    }
+    
+    const data = await res.json();
+    
+    // Handle both formats: {ok: true, leagues: [...]} and {response: [...]}
+    let leaguesArray = [];
+    if (data && data.ok && data.leagues && Array.isArray(data.leagues)) {
+      leaguesArray = data.leagues;
+    } else if (data && data.response && Array.isArray(data.response)) {
+      leaguesArray = data.response;
+    }
+    
+    if (leaguesArray.length > 0) {
+      // Find Premier League (id: 39)
+      const leagueData = leaguesArray.find(l => l.league && l.league.id === 39) || leaguesArray[0];
+      const league = leagueData.league;
+      const country = leagueData.country;
+      
+      // Format name as "England. Premier League"
+      const leagueName = country && country.name 
+        ? `${country.name}. ${league.name}`
+        : league.name;
+      
+      const premierLeague = {
+        id: String(league.id), // Use API id as string
+        country: country?.flag || "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+        name: leagueName,
+        logo: league.logo || null,
+        count: 0, // Will be updated when counting matches
+        apiId: league.id,
+        isPremierLeague: true
+      };
+      
+      console.log('[App] Premier League loaded:', premierLeague);
+      return premierLeague;
+    }
+    
+    console.warn('[App] Premier League not found in response');
+    return null;
+  } catch (err) {
+    console.warn('[App] Error loading Premier League:', err);
+    return null;
+  }
+}
+
+// Load all matches (without odds filtering) to extract all leagues
+async function loadAllMatchesForLeagues() {
+  try {
+    console.log('[App] Loading all matches for leagues extraction...');
+    
+    // First, load Premier League (id=39) separately
+    const premierLeague = await loadPremierLeague();
+    
+    const today = new Date().toISOString().split('T')[0];
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    const url = `${PHP_API_BASE}/matches.php?date=${today}&_t=${timestamp}&_r=${random}`;
+    
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache'
+      }
+    });
+    
+    if (!res.ok) {
+      console.warn('[App] Failed to load all matches for leagues:', res.status);
+      return;
+    }
+    
+    const data = await res.json();
+    
+    if (!data.matches || !Array.isArray(data.matches)) {
+      console.warn('[App] Invalid response format for all matches');
+      return;
+    }
+    
+    console.log(`[App] Received ${data.matches.length} all matches for leagues extraction`);
+    
+    // Store all matches for leagues extraction
+    allMatchesForLeagues = data.matches;
+    
+    // Extract all leagues from all matches
+    const leagueMap = new Map();
+    leagueMap.set("all", { id: "all", country: "🌐", name: "All leagues", count: 0 });
+    
+    // Add Premier League first if loaded (use apiId as key to avoid conflicts)
+    if (premierLeague) {
+      // Use apiId as the key to ensure it's unique
+      const premierLeagueKey = String(premierLeague.apiId);
+      leagueMap.set(premierLeagueKey, premierLeague);
+      console.log('[App] Added Premier League to leagueMap with key:', premierLeagueKey, premierLeague);
+    }
+    
+    data.matches.forEach((m) => {
+      const leagueId = m.league || m.leagueName || "all";
+      const leagueName = m.leagueName || m.league || "Unknown League";
+      
+      // Check if this match belongs to Premier League (by id or name)
+      const isPremierLeagueMatch = premierLeague && (
+        leagueId === String(premierLeague.apiId) || 
+        leagueId === premierLeague.id ||
+        (leagueName && leagueName.toLowerCase().includes('premier league') && 
+         !leagueName.toLowerCase().includes('championship') &&
+         !leagueName.toLowerCase().includes('league one') &&
+         !leagueName.toLowerCase().includes('league two'))
+      );
+      
+      if (isPremierLeagueMatch && premierLeague) {
+        // Add to Premier League count
+        const premierLeagueKey = String(premierLeague.apiId);
+        if (leagueMap.has(premierLeagueKey)) {
+          leagueMap.get(premierLeagueKey).count++;
+        }
+        // Also increment "all" count
+        if (leagueMap.has("all")) {
+          leagueMap.get("all").count++;
+        }
+        return;
+      }
+      
+      // Skip if this league ID already exists as Premier League
+      if (premierLeague && (leagueId === String(premierLeague.apiId) || leagueId === premierLeague.id)) {
+        return;
+      }
+      
+      if (!leagueMap.has(leagueId)) {
+        leagueMap.set(leagueId, {
+          id: leagueId,
+          country: "🏳️",
+          name: leagueName,
+          logo: m.leagueLogo || null,
+          count: 0
+        });
+      }
+      leagueMap.get(leagueId).count++;
+      if (leagueId !== "all") {
+        leagueMap.get("all").count++;
+      }
+    });
+    
+    console.log('[App] Premier League in leagueMap:', premierLeague ? leagueMap.get(String(premierLeague.apiId)) : 'not found');
+    
+    // Sort leagues: "all" first, then priority leagues, then top leagues, then by match count
+    const priorityLeagues = [
+      'England. Premier League',
+      'Germany. Bundesliga',
+      'Spain. La Liga',
+      'Italy. Serie A'
+    ];
+    
+    leagues = Array.from(leagueMap.values()).sort((a, b) => {
+      // "all" always first
+      if (a.id === "all") return -1;
+      if (b.id === "all") return 1;
+      
+      // Special case: Premier League (loaded separately with isPremierLeague flag) must be absolutely first
+      const aIsPremierLeague = a.isPremierLeague || a.apiId === 39 || (a.id === '39' || a.id === 39);
+      const bIsPremierLeague = b.isPremierLeague || b.apiId === 39 || (b.id === '39' || b.id === 39);
+      
+      if (aIsPremierLeague && !bIsPremierLeague) return -1;
+      if (!aIsPremierLeague && bIsPremierLeague) return 1;
+      
+      // Check if league is in priority leagues - exact match first
+      const aExactIndex = priorityLeagues.findIndex(pl => a.name === pl);
+      const bExactIndex = priorityLeagues.findIndex(pl => b.name === pl);
+      const aFlexibleIndex = priorityLeagues.findIndex(pl => a.name.includes(pl) || pl.includes(a.name));
+      const bFlexibleIndex = priorityLeagues.findIndex(pl => b.name.includes(pl) || pl.includes(b.name));
+      
+      const aIsPriority = aExactIndex !== -1 || aFlexibleIndex !== -1;
+      const bIsPriority = bExactIndex !== -1 || bFlexibleIndex !== -1;
+      
+      // Priority leagues come first (in order)
+      if (aIsPriority && !bIsPriority) return -1;
+      if (!aIsPriority && bIsPriority) return 1;
+      
+      if (aIsPriority && bIsPriority) {
+        // Exact matches come before flexible matches
+        if (aExactIndex !== -1 && bExactIndex !== -1) {
+          return aExactIndex - bExactIndex;
+        }
+        if (aExactIndex !== -1) return -1; // a is exact, b is flexible
+        if (bExactIndex !== -1) return 1;  // b is exact, a is flexible
+        // Both are flexible, sort by index
+        if (aFlexibleIndex !== -1 && bFlexibleIndex !== -1) {
+          return aFlexibleIndex - bFlexibleIndex;
+        }
+      }
+      
+      // Check if league is in top leagues
+      const aIsTop = isTopLeague(a.name);
+      const bIsTop = isTopLeague(b.name);
+      
+      // Top leagues come after priority leagues
+      if (aIsTop && !bIsTop) return -1;
+      if (!aIsTop && bIsTop) return 1;
+      
+      // If both are top or both are not, sort by match count
+      return b.count - a.count;
+    });
+    
+    console.log(`[App] Extracted ${leagues.length} leagues from all matches`);
+    
+    // Update leagues filter if modal is open
+    const modal = document.getElementById("search-filters-modal");
+    if (modal && modal.style.display !== 'none') {
+      renderLeaguesFilter();
+    }
+    
+    // Update search filter button
+    updateSearchFilterButton();
+  } catch (err) {
+    console.warn('[App] Error loading all matches for leagues:', err);
+  }
+}
+
 const state = {
   activeTab: "sportsbook",
   activeLeagueId: "all",
+  matchType: "prematch", // "prematch" or "live"
   slip: [],
   stake: 0,
   currentPage: 1,
@@ -525,17 +781,45 @@ async function filterMatchesWithOdds(matches, targetCount) {
 async function renderMatches() {
   const root = document.getElementById("matches-list");
   
-  console.log(`[Render] Total matches: ${matches.length}`);
+  // Don't render if not on sportsbook tab
+  if (state.activeTab !== 'sportsbook') {
+    return;
+  }
+  
+  console.log(`[Render] Total matches: ${matches.length}, matchType: ${state.matchType}`);
   const liveCount = matches.filter(m => m.isLive).length;
   const nonLiveCount = matches.filter(m => !m.isLive).length;
   console.log(`[Render] LIVE: ${liveCount}, Non-LIVE: ${nonLiveCount}`);
   
-  // Apply league filter
+  // Apply match type filter FIRST (prematch or live) - preserve matchType
   let ms = matches;
+  if (state.matchType === "live") {
+    ms = matches.filter((m) => m.isLive === true);
+    console.log(`[Render] Filtered by match type (live): ${ms.length} matches`);
+    
+    // If no live matches found but we're in live mode, show empty state instead of switching
+    if (ms.length === 0) {
+      root.innerHTML = `
+        <div class="matches-empty">
+          <div class="matches-empty-icon">⚽</div>
+          <div class="matches-empty-title">No matches</div>
+          <div class="matches-empty-text">There are no live matches available at the moment</div>
+        </div>
+      `;
+      return;
+    }
+  } else {
+    ms = matches.filter((m) => m.isLive !== true);
+    console.log(`[Render] Filtered by match type (prematch): ${ms.length} matches`);
+  }
+
+  // Apply league filter
   if (state.selectedLeagueIds.length > 0) {
-    ms = matches.filter((m) => state.selectedLeagueIds.includes(m.leagueId));
+    ms = ms.filter((m) => state.selectedLeagueIds.includes(m.leagueId));
+    console.log(`[Render] Filtered by selected leagues (${state.selectedLeagueIds.length}): ${ms.length} matches`);
   } else if (state.activeLeagueId !== "all") {
-    ms = matches.filter((m) => m.leagueId === state.activeLeagueId);
+    ms = ms.filter((m) => m.leagueId === state.activeLeagueId);
+    console.log(`[Render] Filtered by active league (${state.activeLeagueId}): ${ms.length} matches`);
   }
 
   console.log(`[Render] After league filter: ${ms.length} matches`);
@@ -559,6 +843,8 @@ async function renderMatches() {
     });
     console.log(`[Render] After search filter: ${ms.length} matches (was ${beforeSearch})`);
   }
+  
+  // Now check odds ONLY for filtered matches (after league and search filters)
 
   // Sort: LIVE matches first, then top league matches, then regular matches
   const beforeSort = ms.length;
@@ -579,15 +865,42 @@ async function renderMatches() {
   console.log(`[Render] After sort: ${ms.length} matches`);
   console.log(`[Render] First 5 matches:`, ms.slice(0, 5).map(m => `${m.home} vs ${m.away} (LIVE: ${m.isLive})`));
 
-  // Update content subtitle
+  // Update content subtitle with selected league and search query
   const subtitleEl = document.querySelector(".content-subtitle");
   if (subtitleEl) {
-    const activeLeague = leagues.find((l) => l.id === state.activeLeagueId);
-    if (activeLeague && state.activeLeagueId !== "all") {
-      subtitleEl.textContent = `${activeLeague.name} • Live • Today`;
+    let subtitleParts = ["Football"];
+    
+    // Add league info
+    if (state.selectedLeagueIds.length > 0) {
+      const selectedLeagues = state.selectedLeagueIds
+        .map(id => leagues.find(l => l.id === id))
+        .filter(l => l)
+        .map(l => l.name);
+      
+      if (selectedLeagues.length > 0) {
+        if (selectedLeagues.length === 1) {
+          subtitleParts.push(selectedLeagues[0]);
+        } else {
+          subtitleParts.push(`${selectedLeagues.length} leagues`);
+        }
+      }
+    } else if (state.activeLeagueId !== "all") {
+      const activeLeague = leagues.find((l) => l.id === state.activeLeagueId);
+      if (activeLeague) {
+        subtitleParts.push(activeLeague.name);
+      }
     } else {
-      subtitleEl.textContent = "Football • All leagues • Live • Today";
+      subtitleParts.push("All leagues");
     }
+    
+    // Add search query if exists
+    if (state.searchQuery.trim()) {
+      subtitleParts.push(`"${state.searchQuery.trim()}"`);
+    }
+    
+    subtitleParts.push("Live • Today");
+    
+    subtitleEl.textContent = subtitleParts.join(" • ");
   }
 
   // Show loading indicator while filtering matches with odds
@@ -596,44 +909,49 @@ async function renderMatches() {
       <div class="matches-loading-container">
         <div class="loading-spinner-wrapper">
           <div class="loading-spinner"></div>
-          <div class="loading-text">Loading matches with odds...</div>
+          <div class="loading-text">Checking odds for filtered matches...</div>
         </div>
       </div>
     `;
   }
   
-  // For all pages: filter matches to show only those with odds
-  // For first page, check from the beginning until we find enough matches
-  // For other pages, check matches in the page range
+  // Check odds ONLY for matches that passed league and search filters
+  // This is the key change: we filter by league/search first, then check odds
   let filteredMatches = [];
   
-  if (state.currentPage === 1) {
-    // For first page, check matches from the beginning until we find 10 with odds
-    // Start with checking first 50 matches, but continue if needed
-    let startCheckIdx = 0;
-    let endCheckIdx = Math.min(ms.length, state.matchesPerPage * 5);
-    let matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
-    
-    filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
-    
-    // If we didn't find enough, check more matches
-    while (filteredMatches.length < state.matchesPerPage && endCheckIdx < ms.length) {
-      startCheckIdx = endCheckIdx;
-      endCheckIdx = Math.min(ms.length, endCheckIdx + state.matchesPerPage * 2);
-      const additionalMatches = ms.slice(startCheckIdx, endCheckIdx);
-      const additionalFiltered = await filterMatchesWithOdds(additionalMatches, state.matchesPerPage - filteredMatches.length);
-      filteredMatches = filteredMatches.concat(additionalFiltered);
-    }
-    
-    console.log(`[Render] Page ${state.currentPage}: filtered to ${filteredMatches.length} matches with odds (checked up to index ${endCheckIdx})`);
+  if (ms.length === 0) {
+    // No matches after filtering
+    filteredMatches = [];
+    console.log(`[Render] No matches after league/search filtering`);
   } else {
-    // For other pages, check matches in the page range
-    const startCheckIdx = (state.currentPage - 1) * state.matchesPerPage;
-    const endCheckIdx = Math.min(ms.length, startCheckIdx + (state.matchesPerPage * 3));
-    const matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
-    
-    filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
-    console.log(`[Render] Page ${state.currentPage}: filtered to ${filteredMatches.length} matches with odds (from ${matchesToCheck.length} checked)`);
+    // Check odds for all filtered matches (or a reasonable subset for pagination)
+    if (state.currentPage === 1) {
+      // For first page, check matches from the beginning until we find enough with odds
+      let startCheckIdx = 0;
+      let endCheckIdx = Math.min(ms.length, state.matchesPerPage * 5);
+      let matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
+      
+      filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
+      
+      // If we didn't find enough, check more matches
+      while (filteredMatches.length < state.matchesPerPage && endCheckIdx < ms.length) {
+        startCheckIdx = endCheckIdx;
+        endCheckIdx = Math.min(ms.length, endCheckIdx + state.matchesPerPage * 2);
+        const additionalMatches = ms.slice(startCheckIdx, endCheckIdx);
+        const additionalFiltered = await filterMatchesWithOdds(additionalMatches, state.matchesPerPage - filteredMatches.length);
+        filteredMatches = filteredMatches.concat(additionalFiltered);
+      }
+      
+      console.log(`[Render] Page ${state.currentPage}: found ${filteredMatches.length} matches with odds from ${ms.length} filtered matches (checked up to index ${endCheckIdx})`);
+    } else {
+      // For other pages, check matches in the page range
+      const startCheckIdx = (state.currentPage - 1) * state.matchesPerPage;
+      const endCheckIdx = Math.min(ms.length, startCheckIdx + (state.matchesPerPage * 3));
+      const matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
+      
+      filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
+      console.log(`[Render] Page ${state.currentPage}: found ${filteredMatches.length} matches with odds from ${matchesToCheck.length} checked (out of ${ms.length} filtered matches)`);
+    }
   }
 
   // Pagination - use filtered matches for current page
@@ -642,6 +960,18 @@ async function renderMatches() {
   
   console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (of ${filteredMatches.length} filtered, from ${ms.length} total)`);
   console.log(`[Render] Paginated matches:`, paginatedMatches.map(m => `${m.home} vs ${m.away} (LIVE: ${m.isLive})`));
+
+  // Show "No matches" message if no matches found
+  if (paginatedMatches.length === 0) {
+    root.innerHTML = `
+      <div class="matches-empty">
+        <div class="matches-empty-icon">⚽</div>
+        <div class="matches-empty-title">No matches</div>
+        <div class="matches-empty-text">There are no matches available in this section</div>
+      </div>
+    `;
+    return;
+  }
 
   root.innerHTML = `
     <div class="matches-table">
@@ -755,27 +1085,23 @@ function renderMatchRow(match) {
         <span class="live-dot"></span>
         <span class="live-text">${match.liveTime}${match.livePeriod ? ' • ' + match.livePeriod : ''}</span>
       </div>` 
-    : `<div class="match-time-digital">${match.time || "TBD"}</div>`;
+    : '';
+  
+  const matchTimeDisplay = !isLive || !match.liveTime
+    ? `<div class="match-time-digital">${match.time || "TBD"}</div>`
+    : '';
 
   // Render only three main odds: Home, Draw, Away (1, X, 2)
   // Use loaded odds with proper labels
   const oddsButtons = [];
   
-  // Add 1X2 odds with proper labels
-  if (homeOdd && homeOdd > 0) {
-    oddsButtons.push(renderOutcomeButton(match, "1", homeOdd, "Home"));
-  }
-  if (drawOdd && drawOdd > 0) {
-    oddsButtons.push(renderOutcomeButton(match, "X", drawOdd, "Draw"));
-  }
-  if (awayOdd && awayOdd > 0) {
-    oddsButtons.push(renderOutcomeButton(match, "2", awayOdd, "Away"));
-  }
-  
+  // Add 1X2 odds with proper labels - always show all three (1, X, 2) even if some are missing
   const oddsRow = `
     <div class="match-odds-digital">
-      <div class="odds-buttons-inline">
-        ${oddsButtons.join('')}
+      <div class="odds-buttons-inline odds-buttons-full-width">
+        ${renderOutcomeButton(match, "1", homeOdd, "Home")}
+        ${renderOutcomeButton(match, "X", drawOdd, "Draw")}
+        ${renderOutcomeButton(match, "2", awayOdd, "Away")}
       </div>
     </div>
   `;
@@ -804,6 +1130,7 @@ function renderMatchRow(match) {
           <div class="team-name-digital">${match.home}</div>
         </div>
         <div class="match-vs-digital">
+          ${isLive && match.liveTime ? liveTimeDisplay : ''}
           ${scoreDisplay || '<span class="vs-text">VS</span>'}
         </div>
         <div class="team-digital team-away">
@@ -812,9 +1139,7 @@ function renderMatchRow(match) {
         </div>
       </div>
       
-      <div class="match-time-digital-wrapper">
-        ${liveTimeDisplay}
-      </div>
+      ${matchTimeDisplay ? `<div class="match-time-digital-wrapper">${matchTimeDisplay}</div>` : ''}
       
       ${oddsRow}
       
@@ -831,10 +1156,23 @@ function renderMatchRow(match) {
 }
 
 function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null, value = null) {
+  // Add label text for 1X2 outcomes
+  let labelText = '';
+  if (outcomeKey === '1') {
+    labelText = '<div class="outcome-label-text">1</div>';
+  } else if (outcomeKey === 'X') {
+    labelText = '<div class="outcome-label-text">Draw</div>';
+  } else if (outcomeKey === '2') {
+    labelText = '<div class="outcome-label-text">2</div>';
+  }
+  
   if (!odd || odd === 0) {
     return `<div class="outcome-wrapper">
       <div class="outcome-label-mobile"></div>
-      <div class="outcome-cell outcome-cell-empty">—</div>
+      <div class="outcome-cell outcome-cell-empty">
+        ${labelText}
+        <div class="outcome-value">—</div>
+      </div>
     </div>`;
   }
   
@@ -880,6 +1218,7 @@ function renderOutcomeButton(match, outcomeKey, odd, displayLabel = null, value 
         data-label="${buttonLabel}"
         title="${buttonLabel}${value ? ` (${value})` : ''}"
       >
+        ${labelText}
         <div class="outcome-value">${formatOdd(odd)}</div>
       </button>
     </div>
@@ -933,9 +1272,35 @@ function openBetslipMobile() {
     return;
   }
   
+  // Make sure betslip is visible even if parent main is hidden
+  // Force betslip to be visible and positioned correctly
+  // Move betslip to body if it's inside a hidden parent
+  const parentMain = betslip.closest('main.layout, main.page');
+  if (parentMain && parentMain.classList.contains('page-hidden')) {
+    // Move betslip to body temporarily so it's not affected by parent's display:none
+    document.body.appendChild(betslip);
+  }
+  
+  betslip.style.position = 'fixed';
+  betslip.style.zIndex = '9999'; // High z-index, but below bottom-nav (10000)
+  betslip.style.display = 'flex';
+  betslip.style.flexDirection = 'column';
+  betslip.style.visibility = 'visible';
+  betslip.style.opacity = '1';
+  betslip.style.bottom = '0';
+  betslip.style.left = '0';
+  betslip.style.right = '0';
+  betslip.style.top = 'auto';
+  
   betslip.classList.add('betslip-open');
   if (overlay) {
     overlay.style.display = 'block';
+    overlay.style.position = 'fixed';
+    overlay.style.zIndex = '9998'; // Just below betslip
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
     setTimeout(() => overlay.classList.add('active'), 10);
   }
   document.body.style.overflow = 'hidden';
@@ -944,8 +1309,6 @@ function openBetslipMobile() {
   // Убеждаемся, что betslip может получать клики и имеет яркий фон
   betslip.style.pointerEvents = 'all';
   betslip.style.background = '#16181f';
-  betslip.style.display = 'flex';
-  betslip.style.flexDirection = 'column';
   
   // Update bottom nav active state
   updateBottomNavActive();
@@ -964,6 +1327,13 @@ function closeBetslipMobile() {
       overlay.style.display = 'none';
       document.body.style.overflow = '';
       if (closeBtn) closeBtn.style.display = 'none';
+      
+      // Move betslip back to original position if it was moved to body
+      const originalParent = document.querySelector('main.layout[data-page="sportsbook"]');
+      if (originalParent && betslip.parentElement === document.body) {
+        originalParent.appendChild(betslip);
+      }
+      
       // Update bottom nav active state after animation
       updateBottomNavActive();
     }, 300);
@@ -1309,10 +1679,13 @@ function switchTab(tabName) {
     }
   }
   
-  // Close betslip on mobile when switching tabs (except when opening betslip or if betslip is being toggled)
-  if (isMobile() && tabName !== 'betslip' && tabName !== 'sportsbook') {
-    closeBetslipMobile();
+  // Update match type tabs visibility when switching to sportsbook
+  if (tabName === "sportsbook") {
+    updateMatchTypeTabs();
   }
+  
+  // Don't close betslip on mobile when switching tabs - betslip should work from any page
+  // Only close if explicitly needed (not when toggling betslip)
 }
 
 function setupBottomNav() {
@@ -1334,13 +1707,13 @@ function setupBottomNav() {
           switchTab("sportsbook");
         }
       } else if (navName === "betslip") {
-        // Toggle betslip on mobile
+        // Toggle betslip on mobile - works from any page
         if (isMobile()) {
           // Prevent default tab switching behavior
           e.preventDefault();
           e.stopPropagation();
           
-          // Don't switch tabs, just toggle betslip
+          // Don't switch tabs, just toggle betslip (works from any page)
           toggleBetslipMobile();
           
           // Update active state after a short delay to ensure betslip state is updated
@@ -1351,6 +1724,26 @@ function setupBottomNav() {
           // On desktop, just switch to sportsbook (betslip is always visible)
           switchTab("sportsbook");
         }
+      } else if (navName === "sportsbook") {
+        // When clicking home, close all modals and stay on current category
+        if (isMobile()) {
+          // Close all modals
+          closeSearchFiltersModal();
+          closeLeaguesSearchModal();
+          const matchDetailModal = document.getElementById("match-detail-modal");
+          if (matchDetailModal) matchDetailModal.style.display = 'none';
+          const depositModal = document.getElementById("deposit-modal");
+          if (depositModal) depositModal.style.display = 'none';
+          const withdrawalModal = document.getElementById("withdrawal-modal");
+          if (withdrawalModal) withdrawalModal.style.display = 'none';
+          const historyModal = document.getElementById("history-modal");
+          if (historyModal) historyModal.style.display = 'none';
+          const creditRequestModal = document.getElementById("credit-request-modal");
+          if (creditRequestModal) creditRequestModal.style.display = 'none';
+          document.body.style.overflow = '';
+        }
+        // Switch to sportsbook (stays on current category/match type)
+        switchTab("sportsbook");
       } else {
         // Regular tab switch
         switchTab(navName);
@@ -1868,7 +2261,7 @@ function renderFavoritesLeagues() {
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
           </svg>
         </button>
-        <button class="go-to-all-bets-btn" onclick="state.activeLeagueId = '${l.id}'; switchTab('sportsbook'); renderLeagues(); renderMatches();">View</button>
+        <button class="go-to-all-bets-btn" onclick="state.activeLeagueId = '${l.id}'; state.selectedLeagueIds = []; state.searchQuery = ''; updateSearchFilterButton(); switchTab('sportsbook'); renderLeagues(); renderMatches();">View</button>
       </div>
     </div>
   `).join('');
@@ -1989,7 +2382,7 @@ function renderLeaguesModal() {
           const isFavorite = state.favorites.leagues.includes(l.id);
           return `
             <button class="leagues-modal-item ${state.activeLeagueId === l.id ? 'leagues-modal-item-active' : ''}" 
-                    onclick="state.activeLeagueId = '${l.id}'; switchTab('sportsbook'); closeLeaguesSearchModal(); renderLeagues(); renderMatches();">
+                    onclick="state.activeLeagueId = '${l.id}'; state.selectedLeagueIds = []; state.searchQuery = ''; updateSearchFilterButton(); switchTab('sportsbook'); closeLeaguesSearchModal(); renderLeagues(); renderMatches();">
               <div class="leagues-modal-item-main">
                 ${l.logo ? `<img src="${l.logo}" alt="${l.name}" class="league-logo" onerror="this.style.display='none';">` : ''}
                 <span class="leagues-modal-item-name">${l.name}</span>
@@ -2008,6 +2401,58 @@ function renderLeaguesModal() {
       </div>
     `;
   }).join('');
+}
+
+// Update match type tabs active state
+function updateMatchTypeTabs() {
+  const prematchTab = document.getElementById('prematch-tab');
+  const liveTab = document.getElementById('live-tab');
+  
+  if (prematchTab) {
+    if (state.matchType === 'prematch') {
+      prematchTab.classList.add('match-type-tab-active');
+    } else {
+      prematchTab.classList.remove('match-type-tab-active');
+    }
+  }
+  
+  if (liveTab) {
+    if (state.matchType === 'live') {
+      liveTab.classList.add('match-type-tab-active');
+    } else {
+      liveTab.classList.remove('match-type-tab-active');
+    }
+  }
+  
+  // Update fixed live button visibility - always visible
+  const fixedLiveBtn = document.getElementById('fixed-live-btn');
+  if (fixedLiveBtn) {
+    fixedLiveBtn.style.display = 'flex';
+  }
+}
+
+// Update search filter button text to show active filters
+function updateSearchFilterButton() {
+  const btn = document.getElementById("search-filter-btn");
+  if (!btn) return;
+  
+  const span = btn.querySelector("span");
+  if (!span) return;
+  
+  const hasFilters = state.selectedLeagueIds.length > 0 || state.searchQuery.trim().length > 0;
+  
+  if (hasFilters) {
+    let filterText = [];
+    if (state.selectedLeagueIds.length > 0) {
+      filterText.push(`${state.selectedLeagueIds.length} league${state.selectedLeagueIds.length > 1 ? 's' : ''}`);
+    }
+    if (state.searchQuery.trim()) {
+      filterText.push(`"${state.searchQuery.trim()}"`);
+    }
+    span.textContent = `Search & Filters (${filterText.join(', ')})`;
+  } else {
+    span.textContent = "Search & Filters";
+  }
 }
 
 // Search & Filters Modal functions
@@ -2050,6 +2495,59 @@ function renderLeaguesFilter() {
   const searchInput = document.getElementById("leagues-filter-search");
   const searchQuery = (searchInput?.value || "").trim().toLowerCase();
   
+  // Priority leagues that should always be first
+  // Find exact "England. Premier League" first, then others
+  const priorityLeagues = [
+    { exact: 'England. Premier League', search: ['england', 'premier league'] },
+    { exact: 'Germany. Bundesliga', search: ['germany', 'bundesliga'] },
+    { exact: 'Spain. La Liga', search: ['spain', 'la liga'] },
+    { exact: 'Italy. Serie A', search: ['italy', 'serie a'] }
+  ];
+  
+  // Helper function to normalize league name for comparison
+  function normalizeLeagueName(name) {
+    return name.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+  
+  // Helper function to check if league matches priority
+  function isPriorityLeague(leagueName, priority) {
+    const normalized = normalizeLeagueName(leagueName);
+    const normalizedExact = normalizeLeagueName(priority.exact);
+    
+    // First check exact match (normalized)
+    if (normalized === normalizedExact) {
+      return true;
+    }
+    // Then check if it contains exact name
+    if (normalized.includes(normalizedExact) || normalizedExact.includes(normalized)) {
+      return true;
+    }
+    // Then check flexible matching
+    return priority.search.every(term => normalized.includes(term.toLowerCase()));
+  }
+  
+  // Helper function to get priority index with exact match priority
+  function getPriorityIndex(leagueName) {
+    const normalized = normalizeLeagueName(leagueName);
+    
+    // First check for exact matches (normalized)
+    const exactIndex = priorityLeagues.findIndex(pl => {
+      const normalizedExact = normalizeLeagueName(pl.exact);
+      return normalized === normalizedExact || 
+             normalized.includes(normalizedExact) || 
+             normalizedExact.includes(normalized);
+    });
+    if (exactIndex !== -1) {
+      return exactIndex;
+    }
+    // Then check flexible matches
+    return priorityLeagues.findIndex(pl => {
+      const normalizedExact = normalizeLeagueName(pl.exact);
+      if (normalized === normalizedExact) return true;
+      return pl.search.every(term => normalized.includes(term.toLowerCase()));
+    });
+  }
+  
   // Get all leagues except 'all'
   let filtered = leagues.filter(l => l.id !== 'all');
   
@@ -2058,12 +2556,59 @@ function renderLeaguesFilter() {
     filtered = filtered.filter(l => l.name.toLowerCase().includes(searchQuery));
   }
   
-  // Sort leagues: top leagues first (using isTopLeague function)
+  // Find the exact "Premier League" from England (id=39 or name contains "Premier League" and country is England)
+  // This is the league with API id=39: "Premier League" from "England"
+  const englandPremierLeague = filtered.find(l => {
+    const normalized = normalizeLeagueName(l.name);
+    // Check for exact "Premier League" (without country prefix)
+    if (normalized === 'premier league') {
+      return true;
+    }
+    // Check for "England. Premier League" format
+    const target = normalizeLeagueName('England. Premier League');
+    if (normalized === target || normalized.includes(target) || target.includes(normalized)) {
+      return true;
+    }
+    // Check if it's "Premier League" and might be from England (check if id is 39 or contains premier league)
+    if (normalized.includes('premier league') && (l.id === '39' || l.id === 39 || String(l.id).includes('39'))) {
+      return true;
+    }
+    // Also check if name is exactly "Premier League" (most common case)
+    return normalized === 'premier league';
+  });
+  
+  // Sort leagues: priority leagues first, then top leagues, then by match count
   filtered.sort((a, b) => {
+    // Special case: Premier League (loaded separately with isPremierLeague flag) must be absolutely first
+    const aIsPremierLeague = a.isPremierLeague || a.apiId === 39 || (a.id === '39' || a.id === 39) ||
+                            (englandPremierLeague && a.id === englandPremierLeague.id);
+    const bIsPremierLeague = b.isPremierLeague || b.apiId === 39 || (b.id === '39' || b.id === 39) ||
+                            (englandPremierLeague && b.id === englandPremierLeague.id);
+    
+    if (aIsPremierLeague && !bIsPremierLeague) return -1;
+    if (!aIsPremierLeague && bIsPremierLeague) return 1;
+    
+    // Check if league is in priority leagues (with exact match priority)
+    const aPriorityIndex = getPriorityIndex(a.name);
+    const bPriorityIndex = getPriorityIndex(b.name);
+    const aIsPriority = aPriorityIndex !== -1;
+    const bIsPriority = bPriorityIndex !== -1;
+    
+    // Priority leagues come first (in order)
+    if (aIsPriority && !bIsPriority) return -1;
+    if (!aIsPriority && bIsPriority) return 1;
+    
+    if (aIsPriority && bIsPriority) {
+      // Sort priority leagues by their order in priorityLeagues array
+      // Exact matches come before flexible matches
+      return aPriorityIndex - bPriorityIndex;
+    }
+    
+    // Check if league is in top leagues
     const aIsTop = isTopLeague(a.name);
     const bIsTop = isTopLeague(b.name);
     
-    // Top leagues come first
+    // Top leagues come after priority leagues
     if (aIsTop && !bIsTop) return -1;
     if (!aIsTop && bIsTop) return 1;
     
@@ -2112,13 +2657,21 @@ function applySearchFilters() {
   const checkboxes = document.querySelectorAll('.league-filter-checkbox:checked');
   state.selectedLeagueIds = Array.from(checkboxes).map(cb => cb.value);
   
+  // Reset activeLeagueId if leagues are selected via filter
+  if (state.selectedLeagueIds.length > 0) {
+    state.activeLeagueId = "all"; // Clear active league when using filter
+  }
+  
   // Reset to first page
   state.currentPage = 1;
+  
+  // Update filter button text
+  updateSearchFilterButton();
   
   // Close modal
   closeSearchFiltersModal();
   
-  // Re-render matches
+  // Re-render matches (this will update subtitle)
   renderMatches();
 }
 
@@ -2136,6 +2689,9 @@ function resetSearchFilters() {
   // Uncheck all checkboxes
   const checkboxes = document.querySelectorAll('.league-filter-checkbox');
   checkboxes.forEach(cb => cb.checked = false);
+  
+  // Update filter button text
+  updateSearchFilterButton();
   
   // Re-render leagues filter
   renderLeaguesFilter();
@@ -2157,17 +2713,58 @@ function init() {
   // Don't load bets on init, only when user switches to bets tab
   // Set initial active state for bottom nav
   updateBottomNavActive();
+  // Update search filter button
+  updateSearchFilterButton();
+  // Update match type tabs
+  updateMatchTypeTabs();
 
-  // Live Matches button handler
-  const liveMatchesBtn = document.getElementById('live-matches-btn');
-  if (liveMatchesBtn) {
-    liveMatchesBtn.addEventListener('click', () => {
-      switchTab('sportsbook');
-      state.activeLeagueId = 'all';
-      state.searchQuery = '';
-      state.selectedLeagueIds = [];
+  // Match type tabs handlers (Pre Match / Live)
+  const prematchTab = document.getElementById('prematch-tab');
+  const liveTab = document.getElementById('live-tab');
+  
+  if (prematchTab) {
+    prematchTab.addEventListener('click', () => {
+      state.matchType = 'prematch';
       state.currentPage = 1;
+      updateMatchTypeTabs();
       renderMatches();
+    });
+  }
+  
+  if (liveTab) {
+    liveTab.addEventListener('click', () => {
+      state.matchType = 'live';
+      state.currentPage = 1;
+      updateMatchTypeTabs();
+      renderMatches();
+    });
+  }
+  
+  // Fixed Live button handler
+  const fixedLiveBtn = document.getElementById('fixed-live-btn');
+  if (fixedLiveBtn) {
+    fixedLiveBtn.addEventListener('click', () => {
+      // Switch to sportsbook tab first if not already there
+      if (state.activeTab !== 'sportsbook') {
+        switchTab('sportsbook');
+        // Wait a bit for tab switch to complete, then set live
+        setTimeout(() => {
+          state.matchType = 'live';
+          state.currentPage = 1;
+          updateMatchTypeTabs();
+          renderMatches();
+          // Scroll to top
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
+      } else {
+        // Already on sportsbook, just switch to live
+        state.matchType = 'live';
+        state.currentPage = 1;
+        updateMatchTypeTabs();
+        renderMatches();
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     });
   }
 
@@ -2962,7 +3559,14 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
             openBetslipMobile();
           }, 200);
         }
-        // On desktop: just update the button state, no need to reload modal
+        // On desktop: close modal and open betslip
+        else {
+          closeModal();
+          // Open betslip on desktop if not already open
+          if (!document.querySelector('.betslip.betslip-open-desktop')) {
+            openBetslipDesktop();
+          }
+        }
       });
     });
     
