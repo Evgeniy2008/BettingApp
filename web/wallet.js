@@ -287,8 +287,34 @@ function updateUserUI() {
   const balanceText = `$${currentUser.balance.toFixed(2)}`;
   
   if (balanceEl) balanceEl.textContent = balanceText;
-  if (profileBalanceMobile) profileBalanceMobile.textContent = balanceText;
-  if (profileBalanceDesktop) profileBalanceDesktop.textContent = balanceText;
+  
+  const balanceValue = currentUser.balance.toFixed(2);
+  
+  // Update mobile balance with icon
+  if (profileBalanceMobile) {
+    const span = profileBalanceMobile.querySelector('span');
+    if (span) {
+      span.textContent = balanceValue;
+    } else {
+      profileBalanceMobile.innerHTML = `<img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 18px; height: 18px; object-fit: contain;"><span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">${balanceValue}</span>`;
+      profileBalanceMobile.style.display = 'flex';
+      profileBalanceMobile.style.alignItems = 'center';
+      profileBalanceMobile.style.gap = '6px';
+    }
+  }
+  
+  // Update desktop balance with icon
+  if (profileBalanceDesktop) {
+    const span = profileBalanceDesktop.querySelector('span');
+    if (span) {
+      span.textContent = balanceValue;
+    } else {
+      profileBalanceDesktop.innerHTML = `<img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 20px; height: 20px; object-fit: contain;"><span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">${balanceValue}</span>`;
+      profileBalanceDesktop.style.display = 'flex';
+      profileBalanceDesktop.style.alignItems = 'center';
+      profileBalanceDesktop.style.gap = '8px';
+    }
+  }
   
   if (creditLimitEl) creditLimitEl.textContent = `$${currentUser.credit_limit.toFixed(2)}`;
   

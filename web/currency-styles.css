@@ -1,0 +1,67 @@
+/* Currency Balance Styles */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.currency-balance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.currency-balance:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.currency-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.balance-amount {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8e8ea;
+}
+
+.currency-code {
+  font-size: 12px;
+  color: rgba(232, 232, 234, 0.6);
+}
+
+.currency-arrow {
+  color: rgba(232, 232, 234, 0.5);
+  margin-left: 2px;
+}
+
+@media (max-width: 768px) {
+  .currency-balance {
+    padding: 6px 10px;
+    gap: 4px;
+  }
+  
+  .balance-amount {
+    font-size: 12px;
+  }
+  
+  .currency-code {
+    display: none;
+  }
+}

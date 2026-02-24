@@ -1,0 +1,60 @@
+/* Fixed Actions Container - Live + Chat */
+.fixed-actions-container {
+  position: fixed;
+  left: 20px;
+  bottom: 100px;
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.fixed-live-btn {
+  width: 60px;
+  height: 40px;
+  border-radius: 20px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: none; /* Hidden by default, shown when matchType is 'prematch' */
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+  transition: all 0.3s ease;
+}
+
+.fixed-live-btn:hover {
+  background: #ef4444;
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.6);
+}
+
+.fixed-live-btn:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .fixed-actions-container {
+    left: 16px;
+    bottom: 80px;
+    gap: 10px;
+  }
+  
+  .fixed-live-btn {
+    width: 56px;
+    height: 36px;
+    font-size: 11px;
+  }
+  
+  .fixed-live-btn:hover {
+    transform: scale(1.05);
+  }
+  
+  .fixed-live-btn:active {
+    transform: scale(0.95);
+  }
+}

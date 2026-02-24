@@ -7,6 +7,7 @@
     <title>Bets Admin</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="styles_enhancements.css" />
+    <link rel="stylesheet" href="admin-chat.css" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <!-- Include the Dark theme -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@sweetalert2/theme-dark@5/dark.css">
@@ -27,6 +28,7 @@
       <nav class="tabs" id="admin-tabs" style="display: none;">
         <button class="tab tab-active" data-tab="dashboard">Dashboard</button>
         <button class="tab" data-tab="users">Users</button>
+        <button class="tab" data-tab="support">Support Chat</button>
         <button class="tab" data-tab="deposits">Deposits</button>
         <button class="tab" data-tab="payouts">Payouts</button>
         <button class="tab" data-tab="bets">Bets</button>
@@ -63,6 +65,67 @@
             <input id="users-search" class="input" placeholder="Search by @tg or id..." />
           </div>
           <div class="table mt" id="users-table"></div>
+        </section>
+      </main>
+
+      <main class="page page-hidden" data-page="support">
+        <section class="card">
+          <h2>Support Chat</h2>
+          <p>Communicate with users through support chat.</p>
+          <div class="admin-chat-container">
+            <!-- Users List -->
+            <div class="admin-chat-users-panel">
+              <div class="admin-chat-users-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                  </svg>
+                  <input id="support-users-search" class="input" placeholder="Search users..." style="flex: 1; border: none; background: transparent; padding: 8px 0;" />
+                </div>
+              </div>
+              <div id="support-users-list" class="admin-chat-users-list">
+                <div class="admin-chat-empty-state">Loading users...</div>
+              </div>
+            </div>
+            
+            <!-- Chat Window -->
+            <div class="admin-chat-messages-panel">
+              <div class="admin-chat-header">
+                <div class="admin-chat-header-content">
+                  <div class="admin-chat-header-title">
+                    <span id="support-chat-user-name">Select a user to start chatting</span>
+                    <span class="admin-chat-user-id" id="support-chat-user-id" style="display: none;"></span>
+                  </div>
+                  <span class="admin-chat-status-badge" id="support-chat-status" style="display: none;">Admin</span>
+                </div>
+                <button id="support-chat-back" class="admin-chat-back-btn" style="display: none;" onclick="backToUsersList()" title="Back to users">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                </button>
+              </div>
+              <div id="support-chat-messages" class="admin-chat-messages">
+                <div class="admin-chat-empty-state">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.3; margin-bottom: 12px;">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  <div>Select a user from the list to view messages</div>
+                </div>
+              </div>
+              <div id="support-chat-input-wrapper" class="admin-chat-input-wrapper" style="display: none;">
+                <div class="admin-chat-input-container">
+                  <input type="text" id="support-chat-input" class="admin-chat-input" placeholder="Type your message..." />
+                  <button class="admin-chat-send-btn" id="support-chat-send" title="Send message">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
 

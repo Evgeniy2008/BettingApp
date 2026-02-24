@@ -167,6 +167,14 @@ function initTabs() {
         loadCreditRequests();
       } else if (name === 'settings') {
         loadSettings();
+      } else if (name === 'support') {
+        initSupportChat();
+        // Stop polling when leaving support tab
+        if (chatPollInterval) {
+          clearInterval(chatPollInterval);
+          chatPollInterval = null;
+        }
+        selectedUserId = null;
       }
     });
   });
@@ -1099,6 +1107,10 @@ async function updateBetStatus(betId, data) {
   }
 }
 
+let selectedUserId = null;
+let chatPollInterval = null;
+let lastAdminMessageId = 0;
+
 function init() {
   if (!isAuthenticated) return;
   
@@ -1108,6 +1120,7 @@ function init() {
   loadDeposits();
   loadPayouts();
   loadSettings();
+  initSupportChat();
   
   // Search handlers
   const usersSearch = document.getElementById("users-search");
@@ -1147,6 +1160,31 @@ function init() {
   }
   
   const betsStatusFilter = document.getElementById("bets-status-filter");
+  
+  // Support chat handlers
+  const supportUsersSearch = document.getElementById("support-users-search");
+  if (supportUsersSearch) {
+    let timeout;
+    supportUsersSearch.addEventListener("input", () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(loadSupportUsers, 300);
+    });
+  }
+  
+  const supportChatInput = document.getElementById("support-chat-input");
+  const supportChatSend = document.getElementById("support-chat-send");
+  
+  if (supportChatSend) {
+    supportChatSend.addEventListener("click", sendSupportMessage);
+  }
+  
+  if (supportChatInput) {
+    supportChatInput.addEventListener("keypress", (e) => {
+      if (e.key === 'Enter') {
+        sendSupportMessage();
+      }
+    });
+  }
   if (betsStatusFilter) {
     betsStatusFilter.addEventListener("change", () => {
       loadBets();
@@ -1179,6 +1217,320 @@ if (loginPassword) {
     }
   });
 }
+
+// Support Chat Functions
+function initSupportChat() {
+  loadSupportUsers();
+  
+  // Search handler
+  const searchInput = document.getElementById('support-users-search');
+  searchInput?.addEventListener('input', () => {
+    loadSupportUsers();
+  });
+  
+  // Send message handler
+  const sendBtn = document.getElementById('support-chat-send');
+  const chatInput = document.getElementById('support-chat-input');
+  
+  sendBtn?.addEventListener('click', sendSupportMessage);
+  chatInput?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      sendSupportMessage();
+    }
+  });
+}
+
+async function loadSupportUsers() {
+  const usersList = document.getElementById('support-users-list');
+  if (!usersList) return;
+  
+  try {
+    const res = await fetch(`${PHP_API_BASE}/chat-admin.php`, {
+      method: 'GET',
+      headers: getAuthHeaders()
+    });
+    
+    const data = await res.json();
+    
+    if (data.ok && data.users) {
+      const searchQuery = (document.getElementById('support-users-search')?.value || '').toLowerCase();
+      const filteredUsers = data.users.filter(user => {
+        if (!searchQuery) return true;
+        const username = (user.telegram_username || '').toLowerCase();
+        const userId = String(user.id || '');
+        return username.includes(searchQuery) || userId.includes(searchQuery);
+      });
+      
+      if (filteredUsers.length === 0) {
+        usersList.innerHTML = '<div style="padding: 20px; text-align: center; color: rgba(232, 232, 234, 0.5);">No users found</div>';
+        return;
+      }
+      
+      usersList.innerHTML = filteredUsers.map(user => {
+        const isSelected = selectedUserId === user.id;
+        const hasOperatorChat = user.has_operator_chat > 0;
+        const lastMessage = user.last_message_at ? new Date(user.last_message_at).toLocaleString() : 'No messages';
+        const username = user.telegram_username || `User #${user.id}`;
+        
+        return `
+          <div class="admin-chat-user-item ${isSelected ? 'admin-chat-user-item-selected' : ''}" 
+               data-user-id="${user.id}" 
+               onclick="selectSupportUser(${user.id}, '${username.replace(/'/g, "\\'")}')">
+            <div class="admin-chat-user-item-avatar">
+              ${username.charAt(0).toUpperCase()}
+            </div>
+            <div class="admin-chat-user-item-content">
+              <div class="admin-chat-user-item-header">
+                <div class="admin-chat-user-item-name">${username}</div>
+                ${hasOperatorChat ? '<span class="admin-chat-user-item-badge">Active</span>' : ''}
+              </div>
+              <div class="admin-chat-user-item-meta">
+                <span>ID: ${user.id}</span>
+                <span>•</span>
+                <span>${lastMessage}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      usersList.innerHTML = '<div style="padding: 20px; text-align: center; color: rgba(232, 232, 234, 0.5);">No users with chat history</div>';
+    }
+  } catch (error) {
+    console.error('Error loading support users:', error);
+    usersList.innerHTML = '<div style="padding: 20px; text-align: center; color: #f97373;">Error loading users</div>';
+  }
+}
+
+async function selectSupportUser(userId, username) {
+  selectedUserId = userId;
+  
+  // Update UI - highlight selected user
+  document.querySelectorAll('.admin-chat-user-item').forEach(item => {
+    const itemUserId = parseInt(item.getAttribute('data-user-id'));
+    if (itemUserId === userId) {
+      item.classList.add('admin-chat-user-item-selected');
+    } else {
+      item.classList.remove('admin-chat-user-item-selected');
+    }
+  });
+  
+  // Update header
+  const headerTitle = document.getElementById('support-chat-user-name');
+  const headerUserId = document.getElementById('support-chat-user-id');
+  const headerStatus = document.getElementById('support-chat-status');
+  const backBtn = document.getElementById('support-chat-back');
+  const inputWrapper = document.getElementById('support-chat-input-wrapper');
+  
+  if (headerTitle) {
+    headerTitle.textContent = username || `User #${userId}`;
+  }
+  if (headerUserId) {
+    headerUserId.textContent = `ID: ${userId}`;
+    headerUserId.style.display = 'block';
+  }
+  if (headerStatus) {
+    headerStatus.style.display = 'inline-flex';
+    headerStatus.textContent = 'Admin';
+  }
+  if (backBtn) backBtn.style.display = 'flex';
+  if (inputWrapper) inputWrapper.style.display = 'block';
+  
+  // Load messages
+  await loadChatMessages(userId, true);
+  
+  // Start polling for new messages (live updates)
+  if (chatPollInterval) {
+    clearInterval(chatPollInterval);
+  }
+  chatPollInterval = setInterval(() => {
+    if (selectedUserId) {
+      loadChatMessages(selectedUserId, false); // Smart update
+    }
+  }, 2000); // Poll every 2 seconds for live updates
+}
+
+// Function to go back to users list
+function backToUsersList() {
+  selectedUserId = null;
+  const headerTitle = document.getElementById('support-chat-user-name');
+  const headerUserId = document.getElementById('support-chat-user-id');
+  const headerStatus = document.getElementById('support-chat-status');
+  const backBtn = document.getElementById('support-chat-back');
+  const inputWrapper = document.getElementById('support-chat-input-wrapper');
+  const messagesContainer = document.getElementById('support-chat-messages');
+  
+  if (headerTitle) headerTitle.textContent = 'Select a user to start chatting';
+  if (headerUserId) headerUserId.style.display = 'none';
+  if (headerStatus) headerStatus.style.display = 'none';
+  if (backBtn) backBtn.style.display = 'none';
+  if (inputWrapper) inputWrapper.style.display = 'none';
+  if (messagesContainer) {
+    messagesContainer.innerHTML = '<div class="admin-chat-empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.3; margin-bottom: 12px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><div>Select a user from the list to view messages</div></div>';
+  }
+  
+  // Clear selection
+  document.querySelectorAll('.admin-chat-user-item').forEach(item => {
+    item.classList.remove('admin-chat-user-item-selected');
+  });
+  
+  if (chatPollInterval) {
+    clearInterval(chatPollInterval);
+    chatPollInterval = null;
+  }
+}
+
+async function loadChatMessages(userId, forceReload = false) {
+  const messagesContainer = document.getElementById('support-chat-messages');
+  if (!messagesContainer) return;
+  
+  try {
+    const res = await fetch(`${PHP_API_BASE}/chat-admin.php?user_id=${userId}`, {
+      method: 'GET',
+      headers: getAuthHeaders()
+    });
+    
+    const data = await res.json();
+    
+    if (data.ok && data.messages) {
+      const currentMessageCount = messagesContainer.children.length;
+      
+      // If force reload or no messages, reload all
+      if (forceReload || currentMessageCount === 0 || currentMessageCount === 1) {
+        messagesContainer.innerHTML = '';
+        lastAdminMessageId = 0;
+        
+        data.messages.forEach(msg => {
+          const isUser = msg.is_from_user === 1 || msg.is_from_user === true;
+          const isOperator = msg.is_operator_connected === 1 || msg.is_operator_connected === true;
+          const time = new Date(msg.created_at).toLocaleTimeString();
+          
+          // Admin messages (operator) should be on the right, green
+          // User messages should be on the left
+          const isAdminMessage = !isUser; // Admin = not from user
+          
+          const messageDiv = document.createElement('div');
+          messageDiv.className = `admin-chat-message ${isAdminMessage ? 'admin-chat-message-admin' : 'admin-chat-message-user'}`;
+          messageDiv.innerHTML = `
+            <div class="admin-chat-message-bubble">
+              <div class="admin-chat-message-text">${escapeHtml(msg.message)}</div>
+              <div class="admin-chat-message-time">${time}</div>
+            </div>
+          `;
+          messagesContainer.appendChild(messageDiv);
+          
+          if (msg.id > lastAdminMessageId) {
+            lastAdminMessageId = msg.id;
+          }
+        });
+      } else {
+        // Smart update: only add new messages
+        const newMessages = data.messages.filter(msg => msg.id > lastAdminMessageId);
+        newMessages.forEach(msg => {
+          const isUser = msg.is_from_user === 1 || msg.is_from_user === true;
+          const isOperator = msg.is_operator_connected === 1 || msg.is_operator_connected === true;
+          const time = new Date(msg.created_at).toLocaleTimeString();
+          
+          // Admin messages (operator) should be on the right, green
+          // User messages should be on the left
+          const isAdminMessage = !isUser; // Admin = not from user
+          
+          const messageDiv = document.createElement('div');
+          messageDiv.className = `admin-chat-message ${isAdminMessage ? 'admin-chat-message-admin' : 'admin-chat-message-user'} admin-chat-message-new`;
+          messageDiv.innerHTML = `
+            <div class="admin-chat-message-bubble">
+              <div class="admin-chat-message-text">${escapeHtml(msg.message)}</div>
+              <div class="admin-chat-message-time">${time}</div>
+            </div>
+          `;
+          messagesContainer.appendChild(messageDiv);
+          
+          if (msg.id > lastAdminMessageId) {
+            lastAdminMessageId = msg.id;
+          }
+        });
+      }
+      
+      // Scroll to bottom
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+  } catch (error) {
+    console.error('Error loading chat messages:', error);
+    if (forceReload) {
+      messagesContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #f97373;">Error loading messages</div>';
+    }
+  }
+}
+
+async function sendSupportMessage() {
+  if (!selectedUserId) {
+    showError('Error', 'Please select a user first');
+    return;
+  }
+  
+  const input = document.getElementById('support-chat-input');
+  if (!input) return;
+  
+  const message = input.value.trim();
+  if (!message) return;
+  
+  // Add message to UI immediately for better UX
+  const messagesContainer = document.getElementById('support-chat-messages');
+  if (messagesContainer && messagesContainer.children.length > 0 && messagesContainer.children[0].textContent.includes('Select a user')) {
+    messagesContainer.innerHTML = '';
+  }
+  
+  const time = new Date().toLocaleTimeString();
+  const messageDiv = document.createElement('div');
+  messageDiv.style.cssText = 'max-width: 70%; align-self: flex-start; margin-bottom: 12px; opacity: 0.7;';
+  messageDiv.innerHTML = `
+    <div style="padding: 10px 14px; border-radius: 12px; 
+                background: rgba(59, 130, 246, 0.2); 
+                color: #e8e8ea; 
+                border: 1px solid rgba(59, 130, 246, 0.3);">
+      <div style="margin-bottom: 4px; word-wrap: break-word;">${escapeHtml(message)}</div>
+      <div style="font-size: 10px; opacity: 0.7;">${time} (sending...)</div>
+    </div>
+  `;
+  messagesContainer.appendChild(messageDiv);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  
+  try {
+    const res = await fetch(`${PHP_API_BASE}/chat-admin.php`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        user_id: selectedUserId,
+        message: message
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (data.ok) {
+      input.value = '';
+      // Remove temporary message and reload to get actual message with ID
+      messageDiv.remove();
+      await loadChatMessages(selectedUserId, false);
+    } else {
+      messageDiv.remove();
+      showError('Error', data.error || 'Failed to send message');
+    }
+  } catch (error) {
+    console.error('Error sending message:', error);
+    messageDiv.remove();
+    showError('Error', 'Failed to send message');
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Expose function globally
+window.selectSupportUser = selectSupportUser;
 
 window.addEventListener("DOMContentLoaded", () => {
   checkAuth();

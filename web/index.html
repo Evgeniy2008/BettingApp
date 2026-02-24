@@ -6,6 +6,8 @@
     <meta name="theme-color" content="#111317" />
     <title>Bets WebApp</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="support-chat.css" />
+    <link rel="stylesheet" href="popular-leagues.css" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <!-- Include the Dark theme -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@sweetalert2/theme-dark@5/dark.css">
@@ -25,7 +27,10 @@
         </div>
         <div class="header-right">
           <div class="header-profile-mobile" id="header-profile-mobile" style="display: none;">
-            <div class="profile-balance-mobile" id="profile-balance-mobile">$0.00</div>
+            <div class="profile-balance-mobile" id="profile-balance-mobile" style="display: flex; align-items: center; gap: 6px;">
+              <img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 18px; height: 18px; object-fit: contain;">
+              <span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">0.00</span>
+            </div>
             <button class="profile-icon-btn" id="profile-icon-btn" title="Profile">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -34,7 +39,10 @@
             </button>
           </div>
           <div class="header-profile-desktop" id="header-profile-desktop">
-            <div class="profile-balance-desktop" id="profile-balance-desktop">$0.00</div>
+            <div class="profile-balance-desktop" id="profile-balance-desktop" style="display: flex; align-items: center; gap: 8px;">
+              <img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 20px; height: 20px; object-fit: contain;">
+              <span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">0.00</span>
+            </div>
             <button class="profile-icon-btn-desktop" id="profile-icon-btn-desktop" title="Profile">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -63,13 +71,20 @@
             <button class="match-type-tab match-type-tab-active" data-match-type="prematch" id="prematch-tab">Pre Match</button>
             <button class="match-type-tab" data-match-type="live" id="live-tab">Live</button>
           </div>
-          <div class="matches-search-wrapper">
-            <button class="search-filter-btn" id="search-filter-btn">
-              <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span>Search & Filters</span>
-            </button>
+          <!-- Popular Section -->
+          <div class="popular-section" id="popular-section">
+            <div class="popular-header">
+              <h2 class="popular-title">Popular</h2>
+              <button class="advanced-filters-btn" id="advanced-filters-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 6H21M7 12H17M11 18H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Advanced Filters
+              </button>
+            </div>
+            <div class="popular-leagues-filters" id="popular-leagues-filters">
+              <!-- Popular league filters will be rendered here -->
+            </div>
           </div>
           <div class="matches" id="matches-list"></div>
         </section>
@@ -98,11 +113,11 @@
               <button class="quick-btn" data-amount="100">$100</button>
             </div>
             <input
-              type="number"
+              type="text"
               id="stake-input"
               class="input"
               placeholder="Amount"
-              min="0"
+              inputmode="decimal"
             />
             <div class="row">
               <span>Possible win</span>
@@ -500,8 +515,56 @@
       </div>
     </div>
 
+    <!-- Support Chat Widget -->
+    <div class="support-chat-widget" id="support-chat-widget">
+      <button class="support-chat-toggle" id="support-chat-toggle" title="Support Chat">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="support-chat-badge" id="support-chat-badge" style="display: none;">0</span>
+      </button>
+      <div class="support-chat-window" id="support-chat-window" style="display: none;">
+        <div class="support-chat-header">
+          <div class="support-chat-header-title">
+            <span>Support Chat</span>
+            <span class="support-chat-status support-chat-status-ai" id="support-chat-status">AI Assistant</span>
+          </div>
+          <button class="support-chat-close" id="support-chat-close">×</button>
+        </div>
+        <div class="support-chat-messages" id="support-chat-messages"></div>
+        <div class="support-chat-quick-questions" id="support-chat-quick-questions">
+          <div style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-bottom: 8px; padding: 0 4px;">Quick Questions:</div>
+          <button class="quick-question-btn" data-question="How do I withdraw money?">Withdrawal</button>
+          <button class="quick-question-btn" data-question="How do I deposit money?">Deposit</button>
+          <button class="quick-question-btn" data-question="How do I place a bet?">Place Bet</button>
+          <button class="quick-question-btn" data-question="What is credit limit?">Credit Limit</button>
+          <button class="quick-question-btn" data-question="I have a problem with my deposit">Deposit Issue</button>
+          <button class="quick-question-btn" data-question="I have a problem with my bet">Bet Issue</button>
+          <button class="quick-question-btn" data-question="I have a problem with withdrawal">Withdrawal Issue</button>
+        </div>
+        <div class="support-chat-quick-answers" id="support-chat-quick-answers" style="display: none;">
+          <div style="font-size: 11px; color: rgba(232, 232, 234, 0.6); margin-bottom: 8px; padding: 0 4px;">Quick Answers:</div>
+          <button class="quick-answer-btn" data-answer="Yes">Yes</button>
+          <button class="quick-answer-btn" data-answer="No">No</button>
+          <button class="quick-answer-btn" data-answer="Thank you">Thank you</button>
+          <button class="quick-answer-btn" data-answer="I understand">I understand</button>
+          <button class="quick-answer-btn" data-answer="Can you help me?">Can you help me?</button>
+        </div>
+        <div class="support-chat-input-wrapper">
+          <input type="text" class="support-chat-input" id="support-chat-input" placeholder="Connect to operator to type..." disabled />
+          <button class="support-chat-send" id="support-chat-send" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <button class="support-chat-connect-operator" id="support-chat-connect-operator">Connect to Operator</button>
+      </div>
+    </div>
+
     <script src="app.js?v=5"></script>
     <script src="wallet.js"></script>
+    <script src="support-chat.js"></script>
   </body>
 </html>
 

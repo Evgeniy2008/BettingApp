@@ -332,6 +332,8 @@ async function loadMatches(forceRefresh = false) {
       renderMatches();
       // Update tabs to reflect current matchType
       updateMatchTypeTabs();
+      // Render popular leagues
+      renderPopularLeagues();
     }
   } catch (err) {
     // Show error to user
@@ -576,9 +578,142 @@ async function loadAllMatchesForLeagues() {
     
     // Update search filter button
     updateSearchFilterButton();
+    
+    // Render popular leagues
+    renderPopularLeagues();
   } catch (err) {
     console.warn('[App] Error loading all matches for leagues:', err);
   }
+}
+
+// Render popular leagues section
+function renderPopularLeagues() {
+  const popularFilters = document.getElementById('popular-leagues-filters');
+  
+  if (!popularFilters) return;
+  
+  // Fixed priority leagues that should always be shown (in order)
+  const fixedLeaguePatterns = [
+    { name: 'England. Premier League', patterns: ['premier league', 'england'], fallback: { country: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', name: 'England. Premier League' } },
+    { name: 'Spain. La Liga', patterns: ['la liga', 'spain'], fallback: { country: '🇪🇸', name: 'Spain. La Liga' } },
+    { name: 'Italy. Serie A', patterns: ['serie a', 'italy', 'italia'], fallback: { country: '🇮🇹', name: 'Italy. Serie A' } },
+    { name: 'Brazil. Serie A', patterns: ['serie a', 'brazil', 'brasil'], fallback: { country: '🇧🇷', name: 'Brazil. Serie A' } },
+    { name: 'World. UEFA Champions League', patterns: ['champions league', 'uefa'], fallback: { country: '🌍', name: 'World. UEFA Champions League' } },
+    { name: 'Germany. Bundesliga', patterns: ['bundesliga', 'germany'], fallback: { country: '🇩🇪', name: 'Germany. Bundesliga' } }
+  ];
+  
+  // Get all leagues excluding "all"
+  const allLeagues = leagues.filter(l => l.id !== 'all');
+  
+  // Find fixed priority leagues
+  const fixedLeagues = [];
+  
+  fixedLeaguePatterns.forEach((pattern, index) => {
+    // Try to find matching league - more flexible matching
+    let foundLeague = allLeagues.find(league => {
+      const nameLower = league.name.toLowerCase();
+      // Check if all patterns match
+      const allPatternsMatch = pattern.patterns.every(p => nameLower.includes(p.toLowerCase()));
+      
+      // Special handling for Italy vs Brazil Serie A
+      if (pattern.name === 'Italy. Serie A') {
+        // Must have "italy" or "italia" and "serie a", but NOT "brazil" or "brasil"
+        return allPatternsMatch && 
+               (nameLower.includes('italy') || nameLower.includes('italia')) &&
+               !nameLower.includes('brazil') && 
+               !nameLower.includes('brasil');
+      }
+      if (pattern.name === 'Brazil. Serie A') {
+        // Must have "brazil" or "brasil" and "serie a", but NOT "italy" or "italia"
+        return allPatternsMatch && 
+               (nameLower.includes('brazil') || nameLower.includes('brasil')) &&
+               !nameLower.includes('italy') && 
+               !nameLower.includes('italia');
+      }
+      
+      return allPatternsMatch;
+    });
+    
+    // If found but no logo, try to find another league with similar name that has logo
+    if (foundLeague && !foundLeague.logo) {
+      const leagueWithLogo = allLeagues.find(league => {
+        const nameLower = league.name.toLowerCase();
+        const patternNameLower = pattern.name.toLowerCase();
+        // Check if league name matches pattern name (flexible)
+        return (nameLower.includes(patternNameLower.split('. ')[1]?.toLowerCase() || '') ||
+                pattern.patterns.some(p => nameLower.includes(p.toLowerCase()))) &&
+               league.logo;
+      });
+      if (leagueWithLogo) {
+        foundLeague.logo = leagueWithLogo.logo;
+      }
+    }
+    
+    // If not found, create a placeholder with fallback data
+    if (!foundLeague) {
+      foundLeague = {
+        id: `fixed_${index}`,
+        name: pattern.fallback.name,
+        country: pattern.fallback.country,
+        logo: null,
+        count: 0,
+        isFixed: true
+      };
+    }
+    
+    fixedLeagues.push({ ...foundLeague, priorityIndex: index });
+  });
+  
+  // Sort by priorityIndex
+  fixedLeagues.sort((a, b) => a.priorityIndex - b.priorityIndex);
+  
+  // Use fixed leagues as topLeagues
+  const topLeagues = fixedLeagues;
+  
+  // Show loading state if leagues are not loaded yet
+  if (leagues.length <= 1) {
+    popularFilters.innerHTML = `
+      <div style="padding: 12px; text-align: center; color: rgba(232, 232, 234, 0.6); font-size: 14px;">
+        Loading popular...
+      </div>
+    `;
+    return;
+  }
+  
+  // Render filter buttons - always show "All Matches" first, then fixed leagues
+  const allMatchesActive = state.activeLeagueId === 'all' && state.selectedLeagueIds.length === 0;
+  const allMatchesHtml = `
+    <button class="popular-filter-btn ${allMatchesActive ? 'popular-filter-active' : ''}" 
+            data-league-id="all"
+            onclick="state.activeLeagueId = 'all'; state.selectedLeagueIds = []; renderPopularLeagues(); renderMatches();">
+      <span class="popular-filter-icon">🌐</span>
+      All
+    </button>
+  `;
+  
+  const leaguesHtml = topLeagues.map(league => {
+    // For fixed leagues without real ID, use name as identifier
+    const leagueId = league.isFixed ? league.name : league.id;
+    const isActive = state.selectedLeagueIds.includes(league.id) || 
+                     state.selectedLeagueIds.includes(leagueId) ||
+                     (state.selectedLeagueIds.length === 0 && state.activeLeagueId === league.id) ||
+                     (state.selectedLeagueIds.length === 0 && state.activeLeagueId === leagueId);
+    
+    return `
+      <button class="popular-filter-btn ${isActive ? 'popular-filter-active' : ''}" 
+              data-league-id="${leagueId}"
+              onclick="handlePopularLeagueClick('${leagueId}');">
+        ${league.logo 
+          ? `<img src="${league.logo}" alt="${league.name}" class="popular-filter-logo" onerror="this.style.display='none';">` 
+          : `<span class="popular-filter-icon">${league.country || '🏳️'}</span>`
+        }
+        ${league.name}
+        ${league.count > 0 ? `<span class="filter-count">${league.count}</span>` : ''}
+      </button>
+    `;
+  }).join('');
+  
+  popularFilters.innerHTML = allMatchesHtml + leaguesHtml;
 }
 
 const state = {
@@ -853,6 +988,41 @@ async function renderMatches() {
         return true;
       }
       
+      // Match by league name (for fixed leagues like "Italy. Serie A")
+      for (const selectedId of state.selectedLeagueIds) {
+        // If selectedId is a name (contains ". "), match by name
+        if (typeof selectedId === 'string' && selectedId.includes('. ')) {
+          const selectedNameLower = selectedId.toLowerCase();
+          const matchNameLower = (m.leagueName || '').toLowerCase();
+          
+          // Extract key parts from selected name (e.g., "Italy. Serie A" -> ["italy", "serie a"])
+          const selectedParts = selectedNameLower.split('. ').filter(p => p.length > 0);
+          
+          // Check if all parts of selected name are in match league name
+          if (selectedParts.length > 0 && selectedParts.every(part => matchNameLower.includes(part))) {
+            // Special check for Italy vs Brazil Serie A
+            if (selectedNameLower.includes('serie a')) {
+              if (selectedNameLower.includes('italy') || selectedNameLower.includes('italia')) {
+                // Must be Italy Serie A, not Brazil
+                if ((matchNameLower.includes('italy') || matchNameLower.includes('italia')) &&
+                    !matchNameLower.includes('brazil') && !matchNameLower.includes('brasil')) {
+                  return true;
+                }
+              } else if (selectedNameLower.includes('brazil') || selectedNameLower.includes('brasil')) {
+                // Must be Brazil Serie A, not Italy
+                if ((matchNameLower.includes('brazil') || matchNameLower.includes('brasil')) &&
+                    !matchNameLower.includes('italy') && !matchNameLower.includes('italia')) {
+                  return true;
+                }
+              }
+            } else {
+              // For other leagues, just check if all parts match
+              return true;
+            }
+          }
+        }
+      }
+      
       // Also check by league info (for Premier League with apiId=39)
       const matchLeagueInfo = leagues.find(l => l.id === m.leagueId || String(l.apiId) === String(m.leagueId));
       
@@ -894,7 +1064,29 @@ async function renderMatches() {
     console.log(`[Render] Filtered by selected leagues (${state.selectedLeagueIds.length}): ${ms.length} matches`);
     console.log('[Render] Sample match leagueIds after filter:', ms.slice(0, 5).map(m => ({ id: m.id, leagueId: m.leagueId, leagueName: m.leagueName })));
   } else if (state.activeLeagueId !== "all") {
-    ms = ms.filter((m) => m.leagueId === state.activeLeagueId);
+    // Find the league info to get exact name match
+    const activeLeague = leagues.find(l => l.id === state.activeLeagueId);
+    if (activeLeague) {
+      // Filter by exact league name match to avoid showing wrong leagues (e.g., Brazil Serie A when selecting Italy Serie A)
+      ms = ms.filter((m) => {
+        // First try exact leagueId match
+        if (m.leagueId === state.activeLeagueId) {
+          return true;
+        }
+        // Then try exact league name match (full name including country)
+        if (m.leagueName && activeLeague.name && m.leagueName === activeLeague.name) {
+          return true;
+        }
+        // For Premier League with apiId
+        if (activeLeague.apiId && m.leagueId === String(activeLeague.apiId)) {
+          return true;
+        }
+        return false;
+      });
+    } else {
+      // Fallback to leagueId match if league not found
+      ms = ms.filter((m) => m.leagueId === state.activeLeagueId);
+    }
     console.log(`[Render] Filtered by active league (${state.activeLeagueId}): ${ms.length} matches`);
   }
 
@@ -2874,6 +3066,134 @@ async function loadMatchesByLeague(leagueId) {
   }
 }
 
+// Handle popular league click - same logic as filter checkbox
+async function handlePopularLeagueClick(leagueIdOrName) {
+  console.log('[App] ===== handlePopularLeagueClick called with:', leagueIdOrName);
+  
+  // Find the actual league by ID or name (more flexible search)
+  let actualLeagueId = leagueIdOrName;
+  let league = leagues.find(l => l.id === leagueIdOrName || l.name === leagueIdOrName);
+  
+  // If not found by exact match, try flexible name matching
+  if (!league && typeof leagueIdOrName === 'string') {
+    const searchName = leagueIdOrName.toLowerCase();
+    league = leagues.find(l => {
+      const leagueName = (l.name || '').toLowerCase();
+      // Check if league name contains key parts of search name
+      const searchParts = searchName.split('. ');
+      if (searchParts.length > 1) {
+        // For "Italy. Serie A", search for leagues with "italy" and "serie a"
+        return searchParts.every(part => leagueName.includes(part));
+      }
+      return leagueName.includes(searchName);
+    });
+  }
+  
+  if (league) {
+    actualLeagueId = league.id;
+    console.log('[App] Found league:', league);
+  } else {
+    console.warn('[App] League not found, using name as ID:', leagueIdOrName);
+    // If league not found, use the name as identifier for filtering
+    actualLeagueId = leagueIdOrName;
+  }
+  
+  // If clicking the same league, deselect it
+  if (state.selectedLeagueIds.includes(actualLeagueId) || state.selectedLeagueIds.includes(leagueIdOrName)) {
+    state.selectedLeagueIds = [];
+    state.activeLeagueId = "all";
+    state.searchQuery = '';
+  } else {
+    // Select only this league (same as clicking checkbox)
+    state.selectedLeagueIds = [actualLeagueId];
+    state.activeLeagueId = "all"; // Clear active league when using filter
+    state.searchQuery = '';
+  }
+  
+  // Apply the same logic as applySearchFilters
+  await applySelectedLeaguesFilter();
+  
+  // Update UI
+  renderPopularLeagues();
+  updateSearchFilterButton();
+}
+
+// Expose function globally
+window.handlePopularLeagueClick = handlePopularLeagueClick;
+
+// Apply filter for selected leagues (extracted from applySearchFilters)
+async function applySelectedLeaguesFilter() {
+  console.log('[App] Selected league IDs:', state.selectedLeagueIds);
+  console.log('[App] Current matches count:', matches.length);
+  
+  if (state.selectedLeagueIds.length > 0) {
+    // Check if Premier League (id=39) is selected
+    // Premier League can be identified by apiId=39 or isPremierLeague flag
+    for (const selectedId of state.selectedLeagueIds) {
+      console.log('[App] Checking league ID:', selectedId);
+      const leagueInfo = leagues.find(l => l.id === selectedId || String(l.apiId) === String(selectedId));
+      console.log('[App] League info found:', leagueInfo);
+      
+      // Check if this is Premier League
+      const isPremierLeague = leagueInfo && (
+        String(leagueInfo.apiId) === '39' || 
+        selectedId === '39' ||
+        leagueInfo.isPremierLeague === true ||
+        (leagueInfo.name && leagueInfo.name.toLowerCase().includes('premier league') && 
+         leagueInfo.name.toLowerCase().includes('england'))
+      );
+      
+      console.log('[App] Is Premier League?', isPremierLeague);
+      
+      if (isPremierLeague) {
+        console.log('[App] ===== Premier League detected, loading matches from fixtures API =====');
+        // Load matches from fixtures API for Premier League
+        const premierLeagueMatches = await loadMatchesByLeague(selectedId);
+        console.log('[App] Premier League matches loaded:', premierLeagueMatches.length);
+        
+        if (premierLeagueMatches.length > 0) {
+          // Create a map of existing matches by matchId
+          const existingMatchesMap = new Map();
+          matches.forEach(m => {
+            if (m.matchId) {
+              existingMatchesMap.set(m.matchId, m);
+            }
+          });
+          
+          // Update or add Premier League matches
+          premierLeagueMatches.forEach(newMatch => {
+            if (!newMatch.matchId) return;
+            
+            const existingMatch = existingMatchesMap.get(newMatch.matchId);
+            if (existingMatch) {
+              // Update existing match with correct leagueId
+              existingMatch.leagueId = newMatch.leagueId;
+              existingMatch.leagueName = newMatch.leagueName;
+              existingMatch.leagueLogo = newMatch.leagueLogo;
+              existingMatch.isLive = newMatch.isLive;
+              existingMatch.liveTime = newMatch.liveTime;
+              existingMatch.livePeriod = newMatch.livePeriod;
+              existingMatch.score = newMatch.score;
+              existingMatch.time = newMatch.time;
+            } else {
+              // Add new match
+              matches.push(newMatch);
+              existingMatchesMap.set(newMatch.matchId, newMatch);
+            }
+          });
+        }
+        break; // Only load once
+      }
+    }
+  }
+  
+  // Reset to first page
+  state.currentPage = 1;
+  
+  // Render matches with filters
+  renderMatches();
+}
+
 async function applySearchFilters() {
   console.log('[App] ===== applySearchFilters called =====');
   
@@ -3024,6 +3344,8 @@ function init() {
   updateSearchFilterButton();
   // Update match type tabs
   updateMatchTypeTabs();
+  // Render popular leagues
+  renderPopularLeagues();
 
   // Match type tabs handlers (Pre Match / Live)
   const prematchTab = document.getElementById('prematch-tab');
@@ -3228,6 +3550,12 @@ function init() {
     searchFilterBtn.addEventListener("click", openSearchFiltersModal);
   }
   
+  // Advanced filters button (opens the same modal)
+  const advancedFiltersBtn = document.getElementById("advanced-filters-btn");
+  if (advancedFiltersBtn) {
+    advancedFiltersBtn.addEventListener("click", openSearchFiltersModal);
+  }
+  
   if (searchFiltersModalClose) {
     searchFiltersModalClose.addEventListener("click", closeSearchFiltersModal);
   }
@@ -3293,15 +3621,27 @@ function init() {
   });
 
   document.getElementById("stake-input").addEventListener("input", (e) => {
-    const value = Number(e.target.value || "0");
-    state.stake = value > 0 ? Math.round(value * 100) / 100 : 0; // Round to 2 decimal places
-    e.target.value = state.stake > 0 ? state.stake.toFixed(2) : "";
+    // Allow free input without formatting - just save the raw value
+    const rawValue = e.target.value;
+    // Remove any non-numeric characters except decimal point
+    const cleanedValue = rawValue.replace(/[^\d.]/g, '');
+    // Allow only one decimal point
+    const parts = cleanedValue.split('.');
+    const finalValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanedValue;
+    
+    // Update input value (without formatting)
+    e.target.value = finalValue;
+    
+    // Save numeric value to state
+    const numValue = parseFloat(finalValue) || 0;
+    state.stake = numValue > 0 ? Math.round(numValue * 100) / 100 : 0;
     renderSlip();
   });
   
   document.getElementById("stake-input").addEventListener("blur", (e) => {
-    const value = Number(e.target.value || "0");
-    state.stake = value > 0 ? Math.round(value * 100) / 100 : 0; // Round to 2 decimal places
+    // Format only when user finishes input (blur)
+    const value = parseFloat(e.target.value || "0");
+    state.stake = value > 0 ? Math.round(value * 100) / 100 : 0;
     e.target.value = state.stake > 0 ? state.stake.toFixed(2) : "";
     renderSlip();
   });
@@ -3357,11 +3697,28 @@ function init() {
         const balanceElMobile = document.getElementById('profile-balance-mobile');
         const balanceElDesktop = document.getElementById('profile-balance-desktop');
         
+        const balanceValue = parseFloat(data.newBalance).toFixed(2);
         if (balanceElMobile) {
-          balanceElMobile.textContent = balanceText;
+          const span = balanceElMobile.querySelector('span');
+          if (span) {
+            span.textContent = balanceValue;
+          } else {
+            balanceElMobile.innerHTML = `<img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 18px; height: 18px; object-fit: contain;"><span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">${balanceValue}</span>`;
+            balanceElMobile.style.display = 'flex';
+            balanceElMobile.style.alignItems = 'center';
+            balanceElMobile.style.gap = '6px';
+          }
         }
         if (balanceElDesktop) {
-          balanceElDesktop.textContent = balanceText;
+          const span = balanceElDesktop.querySelector('span');
+          if (span) {
+            span.textContent = balanceValue;
+          } else {
+            balanceElDesktop.innerHTML = `<img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 20px; height: 20px; object-fit: contain;"><span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">${balanceValue}</span>`;
+            balanceElDesktop.style.display = 'flex';
+            balanceElDesktop.style.alignItems = 'center';
+            balanceElDesktop.style.gap = '8px';
+          }
         }
         
         // Also update wallet balance if exists
@@ -4213,11 +4570,28 @@ window.addEventListener("DOMContentLoaded", () => {
       const balanceText = `$${currentUser.balance.toFixed(2)}`;
       const balanceElMobile = document.getElementById('profile-balance-mobile');
       const balanceElDesktop = document.getElementById('profile-balance-desktop');
+      const balanceValue = currentUser.balance.toFixed(2);
       if (balanceElMobile && currentUser.balance !== undefined) {
-        balanceElMobile.textContent = balanceText;
+        const span = balanceElMobile.querySelector('span');
+        if (span) {
+          span.textContent = balanceValue;
+        } else {
+          balanceElMobile.innerHTML = `<img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 18px; height: 18px; object-fit: contain;"><span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">${balanceValue}</span>`;
+          balanceElMobile.style.display = 'flex';
+          balanceElMobile.style.alignItems = 'center';
+          balanceElMobile.style.gap = '6px';
+        }
       }
       if (balanceElDesktop && currentUser.balance !== undefined) {
-        balanceElDesktop.textContent = balanceText;
+        const span = balanceElDesktop.querySelector('span');
+        if (span) {
+          span.textContent = balanceValue;
+        } else {
+          balanceElDesktop.innerHTML = `<img src="../usdt.png" alt="USDT" class="balance-icon" style="width: 20px; height: 20px; object-fit: contain;"><span style="font-size: 15px; font-weight: 600; color: #f4f4f5;">${balanceValue}</span>`;
+          balanceElDesktop.style.display = 'flex';
+          balanceElDesktop.style.alignItems = 'center';
+          balanceElDesktop.style.gap = '8px';
+        }
       }
     }
   }
