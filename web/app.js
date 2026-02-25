@@ -763,7 +763,7 @@ function percentToOdds(percentStr) {
   return Math.round(odds * 100) / 100; // Round to 2 decimal places
 }
 
-// Check if match has odds available (using predictions API)
+// Check if match has odds available (using api-sports.io odds API)
 async function checkMatchHasOdds(match) {
   if (!match.matchId && !match.id) {
     return false;
@@ -777,13 +777,13 @@ async function checkMatchHasOdds(match) {
   }
   
   try {
-    const url = `${PHP_API_BASE}/predictions.php?fixture=${fixtureId}`;
+    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}`;
     const res = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-        'Pragma': 'no-cache'
+        'Pragma': 'no-cache',
       }
     });
     
@@ -793,13 +793,12 @@ async function checkMatchHasOdds(match) {
     }
     
     const data = await res.json();
-    // Check if predictions data exists and has percent data
+    // Check if odds data exists and has bookmakers with bets
     const hasOdds = data.ok && 
                     data.response && 
                     Array.isArray(data.response) && 
                     data.response.length > 0 &&
-                    data.response[0].predictions &&
-                    data.response[0].predictions.percent;
+                    data.response.some(item => item.bookmakers && Array.isArray(item.bookmakers) && item.bookmakers.length > 0);
     oddsCheckCache.set(fixtureId, hasOdds);
     return hasOdds;
   } catch (error) {
@@ -809,7 +808,7 @@ async function checkMatchHasOdds(match) {
   }
 }
 
-// Get match odds (Home, Draw, Away) from Predictions API
+// Get match odds (Home, Draw, Away) from api-sports.io odds API
 async function getMatchOdds(match) {
   if (!match.matchId && !match.id) {
     return null;
@@ -818,13 +817,13 @@ async function getMatchOdds(match) {
   const fixtureId = match.matchId || match.id;
   
   try {
-    const url = `${PHP_API_BASE}/predictions.php?fixture=${fixtureId}`;
+    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}`;
     const res = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-        'Pragma': 'no-cache'
+        'Pragma': 'no-cache',
       }
     });
     
@@ -837,16 +836,37 @@ async function getMatchOdds(match) {
       return null;
     }
     
-    const prediction = data.response[0];
-    if (!prediction.predictions || !prediction.predictions.percent) {
-      return null;
-    }
+    // Find Match Winner (1x2) odds from first bookmaker
+    let homeOdd = null;
+    let drawOdd = null;
+    let awayOdd = null;
     
-    // Convert percentages to odds: odds = 100 / percentage
-    const percent = prediction.predictions.percent;
-    const homeOdd = percentToOdds(percent.home);
-    const drawOdd = percentToOdds(percent.draw);
-    const awayOdd = percentToOdds(percent.away);
+    for (const item of data.response) {
+      if (item.bookmakers && Array.isArray(item.bookmakers)) {
+        for (const bookmaker of item.bookmakers) {
+          if (bookmaker.bets && Array.isArray(bookmaker.bets)) {
+            const matchWinnerBet = bookmaker.bets.find(bet => bet.id === 1 || bet.name === 'Match Winner' || bet.name === '1x2');
+            if (matchWinnerBet && matchWinnerBet.values && Array.isArray(matchWinnerBet.values)) {
+              for (const value of matchWinnerBet.values) {
+                if (value.value === 'Home' || value.value === '1') {
+                  homeOdd = parseFloat(value.odd) || null;
+                } else if (value.value === 'Draw' || value.value === 'X') {
+                  drawOdd = parseFloat(value.odd) || null;
+                } else if (value.value === 'Away' || value.value === '2') {
+                  awayOdd = parseFloat(value.odd) || null;
+                }
+              }
+              if (homeOdd && drawOdd && awayOdd) {
+                break;
+              }
+            }
+          }
+        }
+        if (homeOdd && drawOdd && awayOdd) {
+          break;
+        }
+      }
+    }
     
     if (homeOdd && drawOdd && awayOdd) {
       return {
@@ -854,7 +874,7 @@ async function getMatchOdds(match) {
         home: homeOdd,
         draw: drawOdd,
         away: awayOdd,
-        prediction: prediction.predictions // Store full prediction data for reference
+        fullData: data.response // Store full odds data for reference
       };
     }
     
@@ -882,7 +902,7 @@ async function filterMatchesWithOdds(matches, targetCount) {
     const batchPromises = batch.map(async (match) => {
       checkedCount++;
       
-      // First, try to get odds from predictions API
+      // Only use odds from api-sports.io (no fallback to original odds)
       const oddsData = await getMatchOdds(match);
       if (oddsData && oddsData.hasOdds) {
         // Add odds data to match object
@@ -894,33 +914,8 @@ async function filterMatchesWithOdds(matches, targetCount) {
         return match;
       }
       
-      // If predictions API doesn't have odds, check if match has original odds
-      // Use original odds if available (from parsing)
-      if (match.odds && (match.odds.homeWin > 0 || match.odds.draw > 0 || match.odds.awayWin > 0)) {
-        match.loadedOdds = {
-          home: match.odds.homeWin || 0,
-          draw: match.odds.draw || 0,
-          away: match.odds.awayWin || 0
-        };
-        return match;
-      }
-      
-      // Also check allOutcomes for 1x2 odds
-      if (match.allOutcomes && Array.isArray(match.allOutcomes)) {
-        const homeWin = match.allOutcomes.find((o) => o.label === "1" && o.type === "1x2")?.odd || 0;
-        const draw = match.allOutcomes.find((o) => o.label === "X" && o.type === "1x2")?.odd || 0;
-        const awayWin = match.allOutcomes.find((o) => o.label === "2" && o.type === "1x2")?.odd || 0;
-        
-        if (homeWin > 0 || draw > 0 || awayWin > 0) {
-          match.loadedOdds = {
-            home: homeWin,
-            draw: draw,
-            away: awayWin
-          };
-          return match;
-        }
-      }
-      
+      // If api-sports.io doesn't have odds, skip this match (return null)
+      // The function will continue searching for other matches
       return null;
     });
     
@@ -1184,7 +1179,7 @@ async function renderMatches() {
   }
   
   // Check odds ONLY for matches that passed league and search filters
-  // This is the key change: we filter by league/search first, then check odds
+  // Load only 10 matches per page with odds check
   let filteredMatches = [];
   
   if (ms.length === 0) {
@@ -1192,41 +1187,52 @@ async function renderMatches() {
     filteredMatches = [];
     console.log(`[Render] No matches after league/search filtering`);
   } else {
-    // Check odds for all filtered matches (or a reasonable subset for pagination)
-    if (state.currentPage === 1) {
-      // For first page, check matches from the beginning until we find enough with odds
-      let startCheckIdx = 0;
-      let endCheckIdx = Math.min(ms.length, state.matchesPerPage * 5);
-      let matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
-      
-      filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
-      
-      // If we didn't find enough, check more matches
-      while (filteredMatches.length < state.matchesPerPage && endCheckIdx < ms.length) {
-        startCheckIdx = endCheckIdx;
-        endCheckIdx = Math.min(ms.length, endCheckIdx + state.matchesPerPage * 2);
-        const additionalMatches = ms.slice(startCheckIdx, endCheckIdx);
-        const additionalFiltered = await filterMatchesWithOdds(additionalMatches, state.matchesPerPage - filteredMatches.length);
-        filteredMatches = filteredMatches.concat(additionalFiltered);
-      }
-      
-      console.log(`[Render] Page ${state.currentPage}: found ${filteredMatches.length} matches with odds from ${ms.length} filtered matches (checked up to index ${endCheckIdx})`);
-    } else {
-      // For other pages, check matches in the page range
-      const startCheckIdx = (state.currentPage - 1) * state.matchesPerPage;
-      const endCheckIdx = Math.min(ms.length, startCheckIdx + (state.matchesPerPage * 3));
+    // For each page, check matches starting from the appropriate index
+    // We need to find 10 matches with odds for the current page
+    let startCheckIdx = 0;
+    let checkedCount = 0;
+    const maxChecks = ms.length; // Don't check more than total matches
+    
+    // For pages > 1, we need to skip matches from previous pages
+    // Since we don't know how many matches were checked on previous pages,
+    // we'll start from a reasonable estimate
+    if (state.currentPage > 1) {
+      // Estimate: previous pages might have checked ~15 matches per page (to find 10 with odds)
+      startCheckIdx = (state.currentPage - 1) * 15;
+    }
+    
+    // Check matches until we find 10 with odds
+    while (filteredMatches.length < state.matchesPerPage && startCheckIdx < ms.length && checkedCount < maxChecks) {
+      const batchSize = 5;
+      const endCheckIdx = Math.min(ms.length, startCheckIdx + batchSize);
       const matchesToCheck = ms.slice(startCheckIdx, endCheckIdx);
       
-      filteredMatches = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage);
-      console.log(`[Render] Page ${state.currentPage}: found ${filteredMatches.length} matches with odds from ${matchesToCheck.length} checked (out of ${ms.length} filtered matches)`);
+      const batchFiltered = await filterMatchesWithOdds(matchesToCheck, state.matchesPerPage - filteredMatches.length);
+      filteredMatches = filteredMatches.concat(batchFiltered);
+      
+      checkedCount += matchesToCheck.length;
+      startCheckIdx = endCheckIdx;
+      
+      // If we've checked a lot and still don't have enough, break to avoid infinite loop
+      if (checkedCount > state.matchesPerPage * 10) {
+        console.warn(`[Render] Checked ${checkedCount} matches but only found ${filteredMatches.length} with odds. Stopping search.`);
+        break;
+      }
     }
+    
+    console.log(`[Render] Page ${state.currentPage}: found ${filteredMatches.length} matches with odds (checked ${checkedCount} matches, started from index ${state.currentPage > 1 ? (state.currentPage - 1) * 15 : 0})`);
   }
 
   // Pagination - use filtered matches for current page
-  const totalPages = Math.ceil(ms.length / state.matchesPerPage); // Total pages based on all matches
-  const paginatedMatches = filteredMatches.slice(0, state.matchesPerPage); // Take first 10 from filtered
+  // Since we already have exactly 10 matches (or less), we can use them directly
+  const paginatedMatches = filteredMatches.slice(0, state.matchesPerPage);
   
-  console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (of ${filteredMatches.length} filtered, from ${ms.length} total)`);
+  // Calculate total pages based on estimated matches with odds
+  // We estimate that ~66% of matches have odds (10 out of 15 checked)
+  const estimatedMatchesWithOdds = Math.floor(ms.length * 0.66);
+  const totalPages = Math.max(1, Math.ceil(estimatedMatchesWithOdds / state.matchesPerPage));
+  
+  console.log(`[Render] Pagination: page ${state.currentPage}/${totalPages}, showing ${paginatedMatches.length} matches (from ${ms.length} total filtered matches)`);
   console.log(`[Render] Paginated matches:`, paginatedMatches.map(m => `${m.home} vs ${m.away} (LIVE: ${m.isLive})`));
 
   // Show "No matches" message if no matches found
@@ -1966,6 +1972,10 @@ function setupBottomNav() {
       
       // Check for special action attribute
       const action = item.getAttribute("data-action");
+      
+      // Any click on bottom navigation should close all modals first
+      // (match detail, wallet modals, search filters, etc.)
+      closeAllModals();
       
       if (navName === "search") {
         // Open search filters modal
@@ -2753,6 +2763,50 @@ function closeSearchFiltersModal() {
   if (!modal) return;
   
   modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Close all modal windows (used when switching tabs from bottom navigation)
+function closeAllModals() {
+  // Try to close search-related modals via their helpers
+  try {
+    closeSearchFiltersModal();
+  } catch (e) {
+    console.warn('[UI] closeSearchFiltersModal error:', e);
+  }
+  try {
+    closeLeaguesSearchModal();
+  } catch (e) {
+    console.warn('[UI] closeLeaguesSearchModal error:', e);
+  }
+
+  // Generic modal IDs
+  const modalIds = [
+    "match-detail-modal",
+    "deposit-modal",
+    "withdrawal-modal",
+    "history-modal",
+    "credit-request-modal"
+  ];
+
+  modalIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.display = 'none';
+    }
+  });
+
+  // Hide betslip overlays if open
+  const betslipModalOverlay = document.getElementById("betslip-modal-overlay");
+  if (betslipModalOverlay) {
+    betslipModalOverlay.style.display = 'none';
+  }
+  const betslipOverlay = document.getElementById("betslip-overlay");
+  if (betslipOverlay) {
+    betslipOverlay.style.display = 'none';
+  }
+
+  // Restore scroll
   document.body.style.overflow = '';
 }
 
@@ -3982,22 +4036,12 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
   
   console.log('[Match Detail] Match found:', { fixtureId, matchObj });
   
-  // Build match header with logos and score
+  // Build match header - only team names (no logos, no score, no other info)
   const home = matchObj?.home || 'Home';
   const away = matchObj?.away || 'Away';
-  const homeLogo = matchObj?.homeLogo || null;
-  const awayLogo = matchObj?.awayLogo || null;
-  const isLive = matchObj?.isLive || false;
-  const score = matchObj?.score || null;
-  const liveTime = matchObj?.liveTime || null;
-  const livePeriod = matchObj?.livePeriod || null;
-  const leagueName = matchObj?.leagueName || '';
   
-  const homeLogoHtml = homeLogo ? `<img src="${homeLogo}" alt="${home}" class="team-logo" onerror="this.style.display='none';">` : '';
-  const awayLogoHtml = awayLogo ? `<img src="${awayLogo}" alt="${away}" class="team-logo" onerror="this.style.display='none';">` : '';
-  
-  // Set title with logos (simple format as before)
-  modalTitle.innerHTML = `${homeLogoHtml}<span class="team-name">${home}</span> <span style="opacity:.7">vs</span> <span class="team-name">${away}</span>${awayLogoHtml}`;
+  // Set title with only team names
+  modalTitle.innerHTML = `<span class="team-name">${home}</span> <span style="opacity:.7">vs</span> <span class="team-name">${away}</span>`;
   
   // Show skeleton loading
   modalBody.innerHTML = `
@@ -4024,261 +4068,99 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
   openModal();
   
   try {
-    // Use PHP API to get match details and odds
+    // Use api-sports.io odds API
     if (!fixtureId) {
       modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(248, 113, 113, 0.9);">ID матча не найден</div>';
       return;
     }
     
-    console.log('[Match Detail] Fetching predictions for fixture:', fixtureId);
-    const url = `${PHP_API_BASE}/predictions.php?fixture=${fixtureId}`;
+    console.log('[Match Detail] Fetching odds for fixture:', fixtureId);
+    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}`;
     
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache'
+      }
+    });
+    
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     
     const data = await res.json();
-    console.log('[Match Detail] Predictions data received');
+    console.log('[Match Detail] Odds data received');
     
     if (!data.ok || !data.response || !Array.isArray(data.response) || data.response.length === 0) {
-      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Прогнозы не найдены</div>';
+      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Коэффициенты не найдены</div>';
       return;
     }
     
-    const prediction = data.response[0];
-    if (!prediction.predictions) {
-      modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Прогнозы не найдены</div>';
-      return;
-    }
-    
-    const pred = prediction.predictions;
     const matchId = matchObj?.id || fixtureId;
     
-    let html = '<div class="match-detail-odds-blocks">';
+    // Build HTML - only team names and odds (no other info)
+    let html = '<div class="match-detail-teams" style="padding: 20px; text-align: center; margin-bottom: 20px;">';
+    html += `<div style="font-size: 18px; font-weight: 600; color: rgba(232, 232, 234, 0.9);">${home} vs ${away}</div>`;
+    html += '</div>';
     
-    // 1. 1X2 (Main Result)
-    if (pred.percent) {
-      const homeOdd = percentToOdds(pred.percent.home);
-      const drawOdd = percentToOdds(pred.percent.draw);
-      const awayOdd = percentToOdds(pred.percent.away);
+    // Odds blocks below team names
+    html += '<div class="match-detail-odds-blocks">';
+    
+    // Process odds data - structure: response[].bookmakers[].bets[]
+    for (const item of data.response) {
+      if (!item.bookmakers || !Array.isArray(item.bookmakers)) continue;
       
-      if (homeOdd && drawOdd && awayOdd) {
-        html += `<div class="match-detail-odds-block">`;
-        html += `<div class="match-detail-odds-block-title">1X2</div>`;
+      for (const bookmaker of item.bookmakers) {
+        if (!bookmaker.bets || !Array.isArray(bookmaker.bets)) continue;
+        
+        // Group bets by bookmaker
+        html += `<div class="match-detail-odds-block" style="margin-bottom: 20px;">`;
+        html += `<div class="match-detail-odds-block-title">${bookmaker.name || 'Bookmaker'}</div>`;
         html += `<div class="match-detail-odds-block-content">`;
         
-        const outcomes = [
-          { label: '1', odd: homeOdd, value: 'Home', percent: pred.percent.home },
-          { label: 'X', odd: drawOdd, value: 'Draw', percent: pred.percent.draw },
-          { label: '2', odd: awayOdd, value: 'Away', percent: pred.percent.away }
-        ];
-        
-        outcomes.forEach(item => {
-          const outcomeId = `${fixtureId}_1x2_${item.value}_${item.odd}`;
-          const isActive = state.slip.some(s => {
-            return s.outcomeId === outcomeId || 
-                   (s.matchId === matchId && 
-                    s.betName === '1X2' && 
-                    s.value === item.value &&
-                    Math.abs(s.odd - item.odd) < 0.01);
-          });
+        for (const bet of bookmaker.bets) {
+          if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) continue;
           
-          html += `
-            <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
-                    data-match-id="${matchId}"
-                    data-fixture-id="${fixtureId}"
-                    data-bookmaker-id="predictions"
-                    data-bookmaker-name="Predictions"
-                    data-bet-id="1x2"
-                    data-bet-name="1X2"
-                    data-value="${item.value}"
-                    data-odd="${item.odd}"
-                    data-outcome-id="${outcomeId}">
-              <span class="match-detail-odds-btn-label">${item.label}</span>
-              <span class="match-detail-odds-btn-value">${formatOdd(item.odd)}</span>
-              <span style="font-size: 11px; opacity: 0.7; margin-top: 2px;">${item.percent}</span>
-            </button>
-          `;
-        });
+          html += `<div style="margin-bottom: 15px;">`;
+          html += `<div style="font-size: 14px; font-weight: 600; color: rgba(232, 232, 234, 0.8); margin-bottom: 8px;">${bet.name || 'Bet'}</div>`;
+          html += `<div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
+          
+          for (const value of bet.values) {
+            const outcomeId = `${fixtureId}_${bookmaker.id || 'bookmaker'}_${bet.id || 'bet'}_${value.value || 'value'}_${value.odd}`;
+            const isActive = state.slip.some(s => {
+              return s.outcomeId === outcomeId || 
+                     (s.matchId === matchId && 
+                      s.betName === bet.name && 
+                      s.value === value.value &&
+                      Math.abs(s.odd - parseFloat(value.odd)) < 0.01);
+            });
+            
+            html += `
+              <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
+                      data-match-id="${matchId}"
+                      data-fixture-id="${fixtureId}"
+                      data-bookmaker-id="${bookmaker.id || 'bookmaker'}"
+                      data-bookmaker-name="${bookmaker.name || 'Bookmaker'}"
+                      data-bet-id="${bet.id || 'bet'}"
+                      data-bet-name="${bet.name || 'Bet'}"
+                      data-value="${value.value || ''}"
+                      data-odd="${value.odd}"
+                      data-outcome-id="${outcomeId}">
+                <span class="match-detail-odds-btn-label">${value.value || ''}</span>
+                <span class="match-detail-odds-btn-value">${formatOdd(parseFloat(value.odd))}</span>
+              </button>
+            `;
+          }
+          
+          html += `</div></div>`;
+        }
         
         html += `</div></div>`;
       }
     }
     
-    // 2. Double Chance (Win or Draw)
-    if (pred.win_or_draw !== null && pred.win_or_draw !== undefined) {
-      html += `<div class="match-detail-odds-block">`;
-      html += `<div class="match-detail-odds-block-title">Double Chance</div>`;
-      html += `<div class="match-detail-odds-block-content">`;
-      
-      if (pred.winner) {
-        const winnerName = pred.winner.name || 'Winner';
-        const winnerComment = pred.winner.comment || '';
-        const winnerPercent = pred.percent ? (pred.winner.id === prediction.teams?.home?.id ? pred.percent.home : pred.percent.away) : null;
-        const winnerOdd = winnerPercent ? percentToOdds(winnerPercent) : null;
-        
-        if (winnerOdd) {
-          const outcomeId = `${fixtureId}_double_chance_winner_${winnerOdd}`;
-          const isActive = state.slip.some(s => s.outcomeId === outcomeId);
-          
-          html += `
-            <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
-                    data-match-id="${matchId}"
-                    data-fixture-id="${fixtureId}"
-                    data-bookmaker-id="predictions"
-                    data-bet-id="double_chance"
-                    data-bet-name="Double Chance"
-                    data-value="Win or Draw"
-                    data-odd="${winnerOdd}"
-                    data-outcome-id="${outcomeId}">
-              <span class="match-detail-odds-btn-label">${winnerName} ${winnerComment}</span>
-              <span class="match-detail-odds-btn-value">${formatOdd(winnerOdd)}</span>
-            </button>
-          `;
-        } else {
-          html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
-        }
-      } else {
-        html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
-      }
-      
-      html += `</div></div>`;
-    }
-    
-    // 3. Goals Prediction
-    html += `<div class="match-detail-odds-block">`;
-    html += `<div class="match-detail-odds-block-title">Goals Prediction</div>`;
-    html += `<div class="match-detail-odds-block-content">`;
-    
-    if (pred.goals && (pred.goals.home || pred.goals.away)) {
-      if (pred.goals.home) {
-        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
-          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Home</div>
-          <div style="font-size: 16px; color: rgba(248,113,113,0.9); font-weight: 600;">${pred.goals.home}</div>
-        </div>`;
-      } else {
-        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
-          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Home</div>
-          <div style="font-size: 14px; color: rgba(232,232,234,0.5);">No information</div>
-        </div>`;
-      }
-      
-      if (pred.goals.away) {
-        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px;">
-          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Away</div>
-          <div style="font-size: 16px; color: rgba(248,113,113,0.9); font-weight: 600;">${pred.goals.away}</div>
-        </div>`;
-      } else {
-        html += `<div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px;">
-          <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 4px;">Away</div>
-          <div style="font-size: 14px; color: rgba(232,232,234,0.5);">No information</div>
-        </div>`;
-      }
-    } else {
-      html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
-    }
-    
-    html += `</div></div>`;
-    
-    // 4. Comparison Statistics
-    html += `<div class="match-detail-odds-block">`;
-    html += `<div class="match-detail-odds-block-title">Team Comparison</div>`;
-    html += `<div class="match-detail-odds-block-content">`;
-    
-    if (prediction.comparison) {
-      const comparisons = [
-        { key: 'form', label: 'Form' },
-        { key: 'att', label: 'Attack' },
-        { key: 'def', label: 'Defense' },
-        { key: 'goals', label: 'Goals' },
-        { key: 'h2h', label: 'H2H' },
-        { key: 'total', label: 'Total' }
-      ];
-      
-      let hasAnyComparison = false;
-      comparisons.forEach(comp => {
-        if (prediction.comparison[comp.key]) {
-          hasAnyComparison = true;
-          const homePercent = prediction.comparison[comp.key].home || '0%';
-          const awayPercent = prediction.comparison[comp.key].away || '0%';
-          
-          html += `<div style="padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
-            <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 8px;">${comp.label}</div>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div style="flex: 1; text-align: left;">
-                <div style="font-size: 14px; color: rgba(248,113,113,0.9); font-weight: 600;">${homePercent}</div>
-                <div style="font-size: 11px; color: rgba(232,232,234,0.5);">Home</div>
-              </div>
-              <div style="flex: 1; text-align: right;">
-                <div style="font-size: 14px; color: rgba(248,113,113,0.9); font-weight: 600;">${awayPercent}</div>
-                <div style="font-size: 11px; color: rgba(232,232,234,0.5);">Away</div>
-              </div>
-            </div>
-          </div>`;
-        }
-      });
-      
-      if (!hasAnyComparison) {
-        html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
-      }
-    } else {
-      html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
-    }
-    
-    html += `</div></div>`;
-    
-    // 5. Under/Over Statistics (from teams data)
-    html += `<div class="match-detail-odds-block">`;
-    html += `<div class="match-detail-odds-block-title">Under/Over Statistics</div>`;
-    html += `<div class="match-detail-odds-block-content">`;
-    
-    if (prediction.teams?.home?.league?.under_over || prediction.teams?.away?.league?.under_over) {
-      const totals = ['0.5', '1.5', '2.5', '3.5'];
-      let hasAnyTotal = false;
-      
-      totals.forEach(total => {
-        const homeData = prediction.teams?.home?.league?.under_over?.[total];
-        const awayData = prediction.teams?.away?.league?.under_over?.[total];
-        
-        if (homeData || awayData) {
-          hasAnyTotal = true;
-          html += `<div style="padding: 12px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 8px;">
-            <div style="font-size: 12px; color: rgba(232,232,234,0.6); margin-bottom: 8px;">Total ${total}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <div>
-                <div style="font-size: 11px; color: rgba(232,232,234,0.5); margin-bottom: 4px;">Home</div>
-                <div style="font-size: 12px; color: rgba(232,232,234,0.8);">
-                  ${homeData ? `Over: ${homeData.over || 0} | Under: ${homeData.under || 0}` : 'No information'}
-                </div>
-              </div>
-              <div>
-                <div style="font-size: 11px; color: rgba(232,232,234,0.5); margin-bottom: 4px;">Away</div>
-                <div style="font-size: 12px; color: rgba(232,232,234,0.8);">
-                  ${awayData ? `Over: ${awayData.over || 0} | Under: ${awayData.under || 0}` : 'No information'}
-                </div>
-              </div>
-            </div>
-          </div>`;
-        }
-      });
-      
-      if (!hasAnyTotal) {
-        html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
-      }
-    } else {
-      html += `<div style="padding: 12px; text-align: center; color: rgba(232,232,234,0.5);">No information</div>`;
-    }
-    
-    html += `</div></div>`;
-    
-    // 6. Prediction Advice
-    if (pred.advice) {
-      html += `<div class="match-detail-prediction-advice" style="padding: 20px; margin-top: 20px; background: rgba(255, 255, 255, 0.05); border-radius: 12px;">
-        <div style="font-size: 14px; color: rgba(232, 232, 234, 0.7); margin-bottom: 8px;">Прогноз:</div>
-        <div style="font-size: 16px; color: rgba(248, 113, 113, 0.9); font-weight: 600;">${pred.advice}</div>
-      </div>`;
-    }
     
     html += '</div>';
     
@@ -4294,51 +4176,55 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
         e.stopPropagation();
         const matchId = btn.getAttribute('data-match-id');
         const fixtureId = btn.getAttribute('data-fixture-id');
-        const bookmakerId = btn.getAttribute('data-bookmaker-id');
-        const bookmakerName = btn.getAttribute('data-bookmaker-name');
-        const betId = btn.getAttribute('data-bet-id');
-        const betName = btn.getAttribute('data-bet-name');
-        const value = btn.getAttribute('data-value');
+        const betName = btn.getAttribute('data-bet-name') || 'Bet';
+        const betId = btn.getAttribute('data-bet-id') || 'bet';
+        const value = btn.getAttribute('data-value') || '';
         const odd = Number(btn.getAttribute('data-odd'));
         const outcomeId = btn.getAttribute('data-outcome-id');
         
-        // Log fixture_id and bet_id when clicking on bet
-        console.log('Bet clicked - fixture_id:', fixtureId, 'bet_id:', betId);
+        console.log('Bet clicked - fixture_id:', fixtureId, 'betName:', betName, 'value:', value, 'odd:', odd);
         
-        if (!matchId || !outcomeId || !odd) return;
+        if (!matchId || !odd || isNaN(odd)) {
+          console.warn('[Match Detail] Missing required data for bet:', { matchId, odd });
+          return;
+        }
         
         const matchObj = matches.find((m) => m.id === matchId);
-        if (!matchObj) return;
+        if (!matchObj) {
+          console.warn('[Match Detail] Match not found:', matchId);
+          return;
+        }
         
         // Check if it's the exact same outcome
         const existingSameOutcomeIdx = state.slip.findIndex(
           (s) => s.outcomeId === outcomeId || 
                  (s.matchId === matchId && 
-                  s.bookmakerId === bookmakerId && 
-                  s.betId === betId && 
-                  s.value === value &&
+                  s.betName === betName && 
+                  (value === '' ? !s.value : s.value === value) &&
                   Math.abs(s.odd - odd) < 0.01)
         );
         
         // Check if there's already ANY bet on this match (different outcome)
         const existingMatchIdx = state.slip.findIndex((s) => s.matchId === matchId);
         
+        // Create display label
+        const displayLabel = value ? `${betName}: ${value}` : betName;
+        
         const next = {
           matchId: matchObj.id,
           fixtureId: fixtureId || matchObj.matchId,
-          bookmakerId: String(bookmakerId),
-          bookmakerName: bookmakerName,
-          betId: String(betId),
+          bookmakerId: btn.getAttribute('data-bookmaker-id') || 'bookmaker',
+          bookmakerName: btn.getAttribute('data-bookmaker-name') || 'Bookmaker',
+          betId: betId,
           betName: betName,
-          value: value,
+          value: value || null,
           odd: odd,
           outcomeId: outcomeId,
           home: matchObj.home || 'Home',
           away: matchObj.away || 'Away',
           leagueName: matchObj.leagueName || 'Unknown League',
           // For display
-          label: `${bookmakerName} - ${betName}: ${value}`,
-          outcomeKey: `api_${bookmakerId}_${betId}_${value}`
+          label: displayLabel
         };
         
         // If clicking the same exact outcome, toggle it off

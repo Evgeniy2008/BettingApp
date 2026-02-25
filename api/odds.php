@@ -87,11 +87,17 @@ try {
         'fixture' => $fixtureId
     ]);
     
+    // Return empty response if no odds found (this is normal, not an error)
     if (!isset($oddsData['response']) || empty($oddsData['response'])) {
         sendJSON([
-            'ok' => false,
-            'error' => 'Odds not found for this fixture'
-        ], 404);
+            'ok' => true,
+            'response' => [],
+            'meta' => [
+                'results' => 0,
+                'paging' => null,
+                'fetchedAt' => date('c')
+            ]
+        ]);
     }
     
     // Return odds data in the expected format

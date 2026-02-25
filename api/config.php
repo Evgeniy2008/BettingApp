@@ -1,9 +1,9 @@
 <?php
 // Конфигурация базы данных
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'betsbot_db');
-define('DB_USER', 'root');
-define('DB_PASS', 'root');
+define('DB_NAME', 'u743896667_root');
+define('DB_USER', 'u743896667_root');
+define('DB_PASS', 'Godzila#9145');
 define('DB_CHARSET', 'utf8mb4');
 
 // Настройки безопасности

@@ -311,9 +311,9 @@
 
 @media (max-width: 768px) {
   .support-chat-widget {
-    bottom: 80px;
+    bottom: 120px;
     left: 16px;
-    z-index: 9998; /* Below bottom-nav (10000) */
+    z-index: 100; /* Below bottom-nav (10000) */
   }
   
   .support-chat-window {
