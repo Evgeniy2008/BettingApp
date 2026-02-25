@@ -844,6 +844,10 @@ async function getMatchOdds(match) {
     for (const item of data.response) {
       if (item.bookmakers && Array.isArray(item.bookmakers)) {
         for (const bookmaker of item.bookmakers) {
+          // Only use 10Bet bookmaker
+          const is10Bet = bookmaker.name && (bookmaker.name.includes('10Bet') || bookmaker.name.includes('10bet'));
+          if (!is10Bet) continue;
+          
           if (bookmaker.bets && Array.isArray(bookmaker.bets)) {
             const matchWinnerBet = bookmaker.bets.find(bet => bet.id === 1 || bet.name === 'Match Winner' || bet.name === '1x2');
             if (matchWinnerBet && matchWinnerBet.values && Array.isArray(matchWinnerBet.values)) {
@@ -4066,6 +4070,28 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
   
   // Open modal
   openModal();
+
+  const getBetCategory = (betName = '') => {
+    const name = String(betName).toLowerCase();
+    if (/(1x2|match winner|full time result|win\/draw\/win|winner|победа|исход)/.test(name)) {
+      return 'main';
+    }
+    if (/(handicap|asian handicap|spread|фора)/.test(name)) {
+      return 'handicap';
+    }
+    if (/(exact score|correct score|точный счет|счет)/.test(name)) {
+      return 'exactScore';
+    }
+    if (/(total|over\/under|goals|totals|тотал|больше|меньше)/.test(name)) {
+      return 'total';
+    }
+    return 'other';
+  };
+
+  const isMatchWinnerBet = (betName = '') => {
+    const name = String(betName).toLowerCase();
+    return /(1x2|match winner|full time result|win\/draw\/win|winner|исход)/.test(name);
+  };
   
   try {
     // Use api-sports.io odds API
@@ -4100,32 +4126,64 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     
     const matchId = matchObj?.id || fixtureId;
     
-    // Build HTML - only team names and odds (no other info)
-    let html = '<div class="match-detail-teams" style="padding: 20px; text-align: center; margin-bottom: 20px;">';
-    html += `<div style="font-size: 18px; font-weight: 600; color: rgba(232, 232, 234, 0.9);">${home} vs ${away}</div>`;
+    // Build HTML with team logos, league, and live info (like on main page)
+    const homeLogo = matchObj?.homeLogo ? `<img src="${matchObj.homeLogo}" alt="${home}" class="match-detail-team-logo" onerror="this.style.display='none';">` : '<div class="match-detail-team-logo-placeholder"></div>';
+    const awayLogo = matchObj?.awayLogo ? `<img src="${matchObj.awayLogo}" alt="${away}" class="match-detail-team-logo" onerror="this.style.display='none';">` : '<div class="match-detail-team-logo-placeholder"></div>';
+    const isLiveMatch = !!matchObj?.isLive;
+    const liveTimeText = isLiveMatch && matchObj?.liveTime
+      ? `${matchObj.liveTime}${matchObj.livePeriod ? ' • ' + matchObj.livePeriod : ''}`
+      : '';
+    const liveTimeHtml = liveTimeText
+      ? `<div class="live-time-digital" style="justify-content: center;"><span class="live-dot"></span><span class="live-text">${liveTimeText}</span></div>`
+      : '';
+    const scoreHtml = isLiveMatch && matchObj?.score
+      ? `<div class="match-detail-score"><span class="match-detail-score-value">${matchObj.score.home ?? '-'}</span><span class="match-detail-score-separator">:</span><span class="match-detail-score-value">${matchObj.score.away ?? '-'}</span></div>`
+      : '<div class="match-detail-vs-text">VS</div>';
+    const leagueName = matchObj?.leagueName ? `<div class="match-detail-league" style="text-align: center; margin-bottom: 8px;">${matchObj.leagueName}</div>` : '';
+    
+    let html = `${leagueName}`;
+    html += '<div class="match-detail-teams" style="padding: 20px; margin-bottom: 20px;">';
+    html += `<div class="match-detail-team">${homeLogo}<div class="match-detail-team-name">${home}</div></div>`;
+    html += `<div class="match-detail-vs">${liveTimeHtml}${scoreHtml}</div>`;
+    html += `<div class="match-detail-team">${awayLogo}<div class="match-detail-team-name">${away}</div></div>`;
     html += '</div>';
+
+    html += `
+      <div class="match-detail-filters" role="tablist" aria-label="Odds filters">
+        <button class="match-detail-filter-btn match-detail-filter-btn-active" type="button" data-filter="all">All</button>
+        <button class="match-detail-filter-btn" type="button" data-filter="main">Win/Draw/Win</button>
+        <button class="match-detail-filter-btn" type="button" data-filter="handicap">Handicap</button>
+        <button class="match-detail-filter-btn" type="button" data-filter="total">Total</button>
+        <button class="match-detail-filter-btn" type="button" data-filter="exactScore">Exact Score</button>
+      </div>
+    `;
     
     // Odds blocks below team names
     html += '<div class="match-detail-odds-blocks">';
     
-    // Process odds data - structure: response[].bookmakers[].bets[]
+    // Process odds data - structure: response[].bookmakers[].bets[] - Only show 10Bet
     for (const item of data.response) {
       if (!item.bookmakers || !Array.isArray(item.bookmakers)) continue;
       
       for (const bookmaker of item.bookmakers) {
+        // Only show 10Bet bookmaker
+        const is10Bet = bookmaker.name && (bookmaker.name.includes('10Bet') || bookmaker.name.includes('10bet'));
+        if (!is10Bet) continue;
+        
         if (!bookmaker.bets || !Array.isArray(bookmaker.bets)) continue;
         
         // Group bets by bookmaker
         html += `<div class="match-detail-odds-block" style="margin-bottom: 20px;">`;
-        html += `<div class="match-detail-odds-block-title">${bookmaker.name || 'Bookmaker'}</div>`;
         html += `<div class="match-detail-odds-block-content">`;
         
         for (const bet of bookmaker.bets) {
           if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) continue;
           
-          html += `<div style="margin-bottom: 15px;">`;
-          html += `<div style="font-size: 14px; font-weight: 600; color: rgba(232, 232, 234, 0.8); margin-bottom: 8px;">${bet.name || 'Bet'}</div>`;
-          html += `<div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
+          const betCategory = getBetCategory(bet.name);
+          const matchWinnerLayout = isMatchWinnerBet(bet.name) ? 'match-detail-bet-options-1x2' : '';
+          html += `<div class="match-detail-bet-group" data-category="${betCategory}" data-bet-name="${bet.name || 'Bet'}">`;
+          html += `<div class="match-detail-bet-title">${bet.name || 'Bet'}</div>`;
+          html += `<div class="match-detail-bet-options ${matchWinnerLayout}">`;
           
           for (const value of bet.values) {
             const outcomeId = `${fixtureId}_${bookmaker.id || 'bookmaker'}_${bet.id || 'bet'}_${value.value || 'value'}_${value.odd}`;
@@ -4166,6 +4224,41 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     
     modalBody.innerHTML = html;
     console.log('[Match Detail] Content set, buttons count:', modalBody.querySelectorAll('.match-detail-odds-btn').length);
+
+    const filterButtons = modalBody.querySelectorAll('.match-detail-filter-btn');
+    const applyMatchDetailFilter = (filter) => {
+      const currentScrollTop = modalBody.scrollTop;
+      const betGroups = modalBody.querySelectorAll('.match-detail-bet-group');
+      betGroups.forEach((group) => {
+        const category = group.getAttribute('data-category') || 'other';
+        group.hidden = !(filter === 'all' || category === filter);
+      });
+
+      const blocks = modalBody.querySelectorAll('.match-detail-odds-block');
+      blocks.forEach((block) => {
+        const hasVisible = Array.from(block.querySelectorAll('.match-detail-bet-group'))
+          .some((group) => !group.hidden);
+        block.hidden = !hasVisible;
+      });
+
+      requestAnimationFrame(() => {
+        modalBody.scrollTop = currentScrollTop;
+      });
+    };
+
+    if (filterButtons.length > 0) {
+      filterButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const filter = btn.getAttribute('data-filter') || 'all';
+          filterButtons.forEach((item) => {
+            item.classList.toggle('match-detail-filter-btn-active', item === btn);
+          });
+          applyMatchDetailFilter(filter);
+          btn.blur();
+        });
+      });
+      applyMatchDetailFilter('all');
+    }
     
     // Add click handlers for bet buttons
     const oddsButtons = modalBody.querySelectorAll('.match-detail-odds-btn');

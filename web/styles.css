@@ -5099,6 +5099,36 @@ html {
   padding: 16px;
 }
 
+.match-detail-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px 0;
+}
+
+.match-detail-filter-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(17, 18, 22, 0.9);
+  color: rgba(232, 232, 234, 0.9);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.match-detail-filter-btn:hover {
+  border-color: rgba(220, 38, 38, 0.45);
+  color: #f4f4f5;
+}
+
+.match-detail-filter-btn-active {
+  border-color: rgba(220, 38, 38, 0.7);
+  background: rgba(220, 38, 38, 0.15);
+  color: #f4f4f5;
+}
+
 .match-detail-odds-blocks {
   display: flex;
   flex-direction: column;
@@ -5127,6 +5157,30 @@ html {
   margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.match-detail-bet-group {
+  margin-bottom: 12px;
+  break-inside: avoid-column;
+}
+
+.match-detail-bet-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(232, 232, 234, 0.8);
+  margin-bottom: 8px;
+}
+
+.match-detail-bet-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.match-detail-bet-options-1x2 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .match-detail-odds-block-content {
@@ -5239,6 +5293,10 @@ html {
   
   .match-detail-header {
     padding: 10px 12px;
+  }
+  
+  .match-detail-teams {
+    justify-content: center;
   }
   
   .match-detail-team-logo {
