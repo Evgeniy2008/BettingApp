@@ -5135,6 +5135,16 @@ html {
   column-gap: 8px;
 }
 
+@media (max-width: 768px) {
+  .match-detail-odds-block-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    column-count: 1;
+    column-gap: 0;
+  }
+}
+
 .match-detail-odds-btn {
   width: 100%;
   min-width: 0;
