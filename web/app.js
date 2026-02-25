@@ -1549,7 +1549,6 @@ function openBetslipMobile() {
     console.warn('[Betslip] BetSlip element not found when trying to open');
     return;
   }
-
   
   // Make sure betslip is visible even if parent main is hidden
   // Force betslip to be visible and positioned correctly
@@ -1588,12 +1587,10 @@ function openBetslipMobile() {
   // Убеждаемся, что betslip может получать клики и имеет яркий фон
   betslip.style.pointerEvents = 'all';
   betslip.style.background = '#16181f';
-
   
   // Update bottom nav active state
   updateBottomNavActive();
 }
-
 
 // Close betslip on mobile
 function closeBetslipMobile() {
@@ -1602,8 +1599,6 @@ function closeBetslipMobile() {
   const overlay = document.getElementById('betslip-overlay');
   const closeBtn = document.getElementById("betslip-close-btn");
   if (betslip && overlay) {
-    betslip.style.transition = '';
-    betslip.style.transform = 'translateY(0)';
     betslip.classList.remove('betslip-open');
     overlay.classList.remove('active');
     setTimeout(() => {
