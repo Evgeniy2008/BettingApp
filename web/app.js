@@ -777,7 +777,9 @@ async function checkMatchHasOdds(match) {
   }
   
   try {
-    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}`;
+    // Add live parameter for live matches
+    const liveParam = match.isLive ? '&live=true' : '';
+    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}${liveParam}`;
     const res = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
@@ -793,12 +795,19 @@ async function checkMatchHasOdds(match) {
     }
     
     const data = await res.json();
-    // Check if odds data exists and has bookmakers with bets
-    const hasOdds = data.ok && 
-                    data.response && 
-                    Array.isArray(data.response) && 
-                    data.response.length > 0 &&
-                    data.response.some(item => item.bookmakers && Array.isArray(item.bookmakers) && item.bookmakers.length > 0);
+    // Check if odds data exists
+    // For live: check item.odds array
+    // For prematch: check item.bookmakers array
+    let hasOdds = false;
+    if (data.ok && data.response && Array.isArray(data.response) && data.response.length > 0) {
+      if (match.isLive) {
+        // Live structure: response[].odds[]
+        hasOdds = data.response.some(item => item.odds && Array.isArray(item.odds) && item.odds.length > 0);
+      } else {
+        // Prematch structure: response[].bookmakers[].bets[]
+        hasOdds = data.response.some(item => item.bookmakers && Array.isArray(item.bookmakers) && item.bookmakers.length > 0);
+      }
+    }
     oddsCheckCache.set(fixtureId, hasOdds);
     return hasOdds;
   } catch (error) {
@@ -817,7 +826,9 @@ async function getMatchOdds(match) {
   const fixtureId = match.matchId || match.id;
   
   try {
-    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}`;
+    // Add live parameter for live matches
+    const liveParam = match.isLive ? '&live=true' : '';
+    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}${liveParam}`;
     const res = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
@@ -836,13 +847,44 @@ async function getMatchOdds(match) {
       return null;
     }
     
-    // Find Match Winner (1x2) odds from first bookmaker
+    // Find Match Winner (1x2) odds (for prematch)
+    // For live, just check if any odds exist (Match Winner may not be available during match)
     let homeOdd = null;
     let drawOdd = null;
     let awayOdd = null;
     
     for (const item of data.response) {
-      if (item.bookmakers && Array.isArray(item.bookmakers)) {
+      // Live structure: item.odds[] directly
+      if (match.isLive && item.odds && Array.isArray(item.odds)) {
+        // For live, try to find Match Winner but accept any odds
+        const matchWinnerBet = item.odds.find(bet => bet.id === 1 || bet.name === 'Match Winner' || bet.name === '1x2');
+        if (matchWinnerBet && matchWinnerBet.values && Array.isArray(matchWinnerBet.values)) {
+          for (const value of matchWinnerBet.values) {
+            if (value.value === 'Home' || value.value === '1') {
+              homeOdd = parseFloat(value.odd) || null;
+            } else if (value.value === 'Draw' || value.value === 'X') {
+              drawOdd = parseFloat(value.odd) || null;
+            } else if (value.value === 'Away' || value.value === '2') {
+              awayOdd = parseFloat(value.odd) || null;
+            }
+          }
+        }
+        // For live, if Match Winner not found but other odds exist, return success with dummy odds
+        if (!homeOdd && !drawOdd && !awayOdd && item.odds.length > 0) {
+          return {
+            hasOdds: true,
+            home: 0,
+            draw: 0,
+            away: 0,
+            fullData: data.response // Store full odds data for reference
+          };
+        }
+        if (homeOdd && drawOdd && awayOdd) {
+          break;
+        }
+      }
+      // Prematch structure: item.bookmakers[].bets[]
+      else if (!match.isLive && item.bookmakers && Array.isArray(item.bookmakers)) {
         for (const bookmaker of item.bookmakers) {
           // Only use 10Bet bookmaker
           const is10Bet = bookmaker.name && (bookmaker.name.includes('10Bet') || bookmaker.name.includes('10bet'));
@@ -1170,6 +1212,7 @@ async function renderMatches() {
     subtitleEl.textContent = subtitleParts.join(" • ");
   }
 
+  // Filter matches by odds availability for both live and prematch
   // Show loading indicator while filtering matches with odds
   if (ms.length > 0) {
     root.innerHTML = `
@@ -4210,13 +4253,14 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
         for (const value of bet.values) {
           // Skip suspended bets in live matches
           if (value.suspended === true) continue;
-          
-          const outcomeId = `${fixtureId}_live_${bet.id || 'bet'}_${value.value || 'value'}_${value.odd}`;
+
+          const valueKey = value.handicap ? `${value.value} ${value.handicap}` : value.value;
+          const outcomeId = `${fixtureId}_live_${bet.id || 'bet'}_${valueKey || 'value'}_${value.odd}`;
           const isActive = state.slip.some(s => {
             return s.outcomeId === outcomeId || 
                    (s.matchId === matchId && 
                     s.betName === bet.name && 
-                    s.value === value.value &&
+                    s.value === valueKey &&
                     Math.abs(s.odd - parseFloat(value.odd)) < 0.01);
           });
           
@@ -4234,7 +4278,7 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
                     data-bookmaker-name="Live"
                     data-bet-id="${bet.id || 'bet'}"
                     data-bet-name="${bet.name || 'Bet'}"
-                    data-value="${value.value || ''}"
+                    data-value="${valueKey || ''}"
                     data-odd="${value.odd}"
                     data-outcome-id="${outcomeId}">
               <span class="match-detail-odds-btn-label">${displayValue || ''}${handicapText}</span>

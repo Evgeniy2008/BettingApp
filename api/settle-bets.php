@@ -51,6 +51,122 @@ function apiSportsRequest($endpoint, $params = []) {
     return $data;
 }
 
+function normalizeStatKey($key) {
+    $key = strtolower(trim((string)$key));
+    $key = preg_replace('/\s+/', ' ', $key);
+    return $key;
+}
+
+function normalizeStatValue($value) {
+    if ($value === null) {
+        return 0;
+    }
+    if (is_string($value)) {
+        $value = str_replace('%', '', $value);
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+    }
+    if (is_numeric($value)) {
+        return floatval($value);
+    }
+    return 0;
+}
+
+function buildStatsMap($statsResponse, $homeTeamId, $awayTeamId) {
+    $stats = [
+        'home' => [],
+        'away' => []
+    ];
+
+    if (!is_array($statsResponse)) {
+        return $stats;
+    }
+
+    foreach ($statsResponse as $teamStats) {
+        $teamId = $teamStats['team']['id'] ?? null;
+        $side = ($teamId && $teamId == $homeTeamId) ? 'home' : 'away';
+
+        if (!isset($teamStats['statistics']) || !is_array($teamStats['statistics'])) {
+            continue;
+        }
+
+        foreach ($teamStats['statistics'] as $stat) {
+            $type = $stat['type'] ?? '';
+            $value = $stat['value'] ?? null;
+            $stats[$side][normalizeStatKey($type)] = normalizeStatValue($value);
+        }
+    }
+
+    return $stats;
+}
+
+function getStatValue($stats, $side, $aliases = []) {
+    if (!$stats || !isset($stats[$side])) {
+        return null;
+    }
+    foreach ($aliases as $alias) {
+        $key = normalizeStatKey($alias);
+        if (array_key_exists($key, $stats[$side])) {
+            return $stats[$side][$key];
+        }
+    }
+    return null;
+}
+
+function getFixtureContext($fixtureId) {
+    static $cache = [];
+    if (isset($cache[$fixtureId])) {
+        return $cache[$fixtureId];
+    }
+
+    $context = [
+        'fixture' => null,
+        'events' => [],
+        'stats' => [
+            'home' => [],
+            'away' => []
+        ]
+    ];
+
+    try {
+        $fixtureData = apiSportsRequest('/fixtures', ['id' => $fixtureId]);
+        if (isset($fixtureData['response'][0])) {
+            $context['fixture'] = $fixtureData['response'][0];
+        }
+    } catch (Exception $e) {
+        $cache[$fixtureId] = $context;
+        return $context;
+    }
+
+    try {
+        $eventsData = apiSportsRequest('/fixtures/events', ['fixture' => $fixtureId]);
+        if (isset($eventsData['response']) && is_array($eventsData['response'])) {
+            $context['events'] = $eventsData['response'];
+        }
+    } catch (Exception $e) {
+        $context['events'] = [];
+    }
+
+    try {
+        $statsData = apiSportsRequest('/fixtures/statistics', ['fixture' => $fixtureId]);
+        if (isset($statsData['response']) && is_array($statsData['response']) && $context['fixture']) {
+            $homeTeamId = $context['fixture']['teams']['home']['id'] ?? null;
+            $awayTeamId = $context['fixture']['teams']['away']['id'] ?? null;
+            $context['stats'] = buildStatsMap($statsData['response'], $homeTeamId, $awayTeamId);
+        }
+    } catch (Exception $e) {
+        $context['stats'] = [
+            'home' => [],
+            'away' => []
+        ];
+    }
+
+    $cache[$fixtureId] = $context;
+    return $context;
+}
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -64,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 /**
  * Calculates bet result based on match fixture data
  */
-function calculateBetResult($bet, $fixture) {
+function calculateBetResult($bet, $fixture, $context = null) {
     if (!$fixture || !isset($fixture['fixture']) || !isset($fixture['fixture']['status'])) {
         return null; // Match data not available
     }
@@ -112,13 +228,13 @@ function calculateBetResult($bet, $fixture) {
             
             // Get fixture for this item
             try {
-                $itemFixtureData = apiSportsRequest('/fixtures', ['id' => $itemFixtureId]);
-                if (!isset($itemFixtureData['response']) || empty($itemFixtureData['response'])) {
+                $itemContext = getFixtureContext($itemFixtureId);
+                if (!isset($itemContext['fixture']) || empty($itemContext['fixture'])) {
                     $allWon = false;
                     $allFinished = false;
                     continue;
                 }
-                $itemFixture = $itemFixtureData['response'][0];
+                $itemFixture = $itemContext['fixture'];
                 
                 $itemStatus = trim($itemFixture['fixture']['status']['long'] ?? '');
                 $itemStatusShort = trim($itemFixture['fixture']['status']['short'] ?? '');
@@ -136,7 +252,7 @@ function calculateBetResult($bet, $fixture) {
                     return null; // Not all matches finished yet
                 }
                 
-                $itemResult = calculateSingleOutcome($item, $itemFixture);
+                $itemResult = calculateSingleOutcome($item, $itemFixture, $itemContext);
                 if ($itemResult === null) {
                     $allWon = false;
                     $allFinished = false;
@@ -167,19 +283,22 @@ function calculateBetResult($bet, $fixture) {
     }
     
     // Single bet calculation
-    return calculateSingleOutcome($bet, $fixture);
+    return calculateSingleOutcome($bet, $fixture, $context);
 }
 
 /**
  * Calculates result for a single outcome
  */
-function calculateSingleOutcome($outcome, $fixture) {
+function calculateSingleOutcome($outcome, $fixture, $context = null) {
     // Get scores - try different possible structures from API
     $homeScore = intval($fixture['goals']['home'] ?? $fixture['score']['fulltime']['home'] ?? 0);
     $awayScore = intval($fixture['goals']['away'] ?? $fixture['score']['fulltime']['away'] ?? 0);
     $halftimeHome = intval($fixture['score']['halftime']['home'] ?? 0);
     $halftimeAway = intval($fixture['score']['halftime']['away'] ?? 0);
     
+    $events = $context['events'] ?? ($fixture['events'] ?? []);
+    $stats = $context['stats'] ?? null;
+
     $outcomeKey = $outcome['outcome_key'] ?? $outcome['outcomeKey'] ?? '';
     $outcomeType = $outcome['outcome_type'] ?? $outcome['type'] ?? '';
     $outcomeValue = $outcome['outcome_value'] ?? $outcome['value'] ?? null;
@@ -282,7 +401,7 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Goals Over/Under - bet ID 5 (Full Match)
-    if ($outcomeType === 'total' || ($betNameLower !== '' && stripos($betNameLower, 'over/under') !== false && stripos($betNameLower, 'first half') === false && stripos($betNameLower, 'second half') === false)) {
+    if ($outcomeType === 'total' || ($betNameLower !== '' && (stripos($betNameLower, 'over/under') !== false || stripos($betNameLower, 'match goals') !== false || stripos($betNameLower, 'over/under line') !== false) && stripos($betNameLower, 'first half') === false && stripos($betNameLower, 'second half') === false && stripos($betNameLower, 'home team') === false && stripos($betNameLower, 'away team') === false)) {
         if (isset($outcome['value'])) {
             $valueStr = $outcome['value'];
             // Parse value from "Over 1.5" or "Under 2.5" format
@@ -379,11 +498,11 @@ function calculateSingleOutcome($outcome, $fixture) {
         }
     }
     
-    // Exact Score - bet ID 10
-    if ((stripos($betNameLower, 'exact score') !== false || stripos($betNameLower, 'correct score') !== false) && stripos($betNameLower, 'first half') === false && stripos($betNameLower, 'second half') === false) {
+    // Exact Score / Final Score - bet ID 10
+    if ((stripos($betNameLower, 'exact score') !== false || stripos($betNameLower, 'correct score') !== false || stripos($betNameLower, 'final score') !== false) && stripos($betNameLower, 'first half') === false && stripos($betNameLower, 'second half') === false) {
         if (isset($outcome['value'])) {
             $scoreStr = $outcome['value']; // e.g., "2:1"
-            $parts = explode(':', $scoreStr);
+            $parts = preg_split('/[:\-]/', $scoreStr);
             if (count($parts) === 2) {
                 $expectedHome = intval($parts[0]);
                 $expectedAway = intval($parts[1]);
@@ -489,7 +608,7 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Total - Home (Home team total goals)
-    if (stripos($betNameLower, 'total - home') !== false) {
+    if (stripos($betNameLower, 'total - home') !== false || stripos($betNameLower, 'home team goals') !== false) {
         if (isset($outcome['value'])) {
             $valueStr = $outcome['value'];
             preg_match('/(\d+\.?\d*)/', $valueStr, $matches);
@@ -504,7 +623,7 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Total - Away (Away team total goals)
-    if (stripos($betNameLower, 'total - away') !== false) {
+    if (stripos($betNameLower, 'total - away') !== false || stripos($betNameLower, 'away team goals') !== false) {
         if (isset($outcome['value'])) {
             $valueStr = $outcome['value'];
             preg_match('/(\d+\.?\d*)/', $valueStr, $matches);
@@ -561,7 +680,7 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Handicap Result (European Handicap)
-    if (stripos($betNameLower, 'handicap result') !== false) {
+    if (stripos($betNameLower, 'handicap result') !== false || stripos($betNameLower, '3-way handicap') !== false || stripos($betNameLower, '3 way handicap') !== false) {
         if (isset($outcome['value'])) {
             $valueStr = $outcome['value'];
             // Parse format like "Home -1", "Draw +1", "Away -2"
@@ -588,7 +707,7 @@ function calculateSingleOutcome($outcome, $fixture) {
     if (stripos($betNameLower, 'correct score') !== false && stripos($betNameLower, 'first half') !== false) {
         if (isset($outcome['value'])) {
             $scoreStr = $outcome['value']; // e.g., "1:0"
-            $parts = explode(':', $scoreStr);
+            $parts = preg_split('/[:\-]/', $scoreStr);
             if (count($parts) === 2) {
                 $expectedHome = intval($parts[0]);
                 $expectedAway = intval($parts[1]);
@@ -664,11 +783,14 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Team To Score First - requires events from fixture
-    if (stripos($betNameLower, 'team to score first') !== false) {
-        if (isset($outcome['value']) && isset($fixture['events']) && is_array($fixture['events'])) {
-            $events = $fixture['events'];
+    if (stripos($betNameLower, 'team to score first') !== false || stripos($betNameLower, '1st goal') !== false || stripos($betNameLower, 'first goal') !== false) {
+        if (isset($outcome['value']) && is_array($events) && !empty($events)) {
             $homeTeamId = $fixture['teams']['home']['id'] ?? null;
             $awayTeamId = $fixture['teams']['away']['id'] ?? null;
+            $valueStr = $outcome['value'];
+            if ($valueStr === '1') $valueStr = 'Home';
+            if ($valueStr === '2') $valueStr = 'Away';
+            if (stripos($valueStr, 'no goal') !== false) $valueStr = 'Draw';
             
             // Find first goal
             $firstGoal = null;
@@ -685,16 +807,16 @@ function calculateSingleOutcome($outcome, $fixture) {
             
             if ($firstGoal && isset($firstGoal['team']['id'])) {
                 $firstGoalTeamId = $firstGoal['team']['id'];
-                if ($outcome['value'] === 'Home' && $firstGoalTeamId == $homeTeamId) {
+                if ($valueStr === 'Home' && $firstGoalTeamId == $homeTeamId) {
                     return 'won';
-                } elseif ($outcome['value'] === 'Away' && $firstGoalTeamId == $awayTeamId) {
+                } elseif ($valueStr === 'Away' && $firstGoalTeamId == $awayTeamId) {
                     return 'won';
-                } elseif ($outcome['value'] === 'Draw' && $homeScore === 0 && $awayScore === 0) {
+                } elseif ($valueStr === 'Draw' && $homeScore === 0 && $awayScore === 0) {
                     return 'won';
                 } else {
                     return 'lost';
                 }
-            } elseif ($outcome['value'] === 'Draw' && $homeScore === 0 && $awayScore === 0) {
+            } elseif ($valueStr === 'Draw' && $homeScore === 0 && $awayScore === 0) {
                 return 'won';
             } else {
                 return 'lost';
@@ -703,11 +825,14 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Team To Score Last - requires events from fixture
-    if (stripos($betNameLower, 'team to score last') !== false) {
-        if (isset($outcome['value']) && isset($fixture['events']) && is_array($fixture['events'])) {
-            $events = $fixture['events'];
+    if (stripos($betNameLower, 'team to score last') !== false || stripos($betNameLower, 'last team to score') !== false) {
+        if (isset($outcome['value']) && is_array($events) && !empty($events)) {
             $homeTeamId = $fixture['teams']['home']['id'] ?? null;
             $awayTeamId = $fixture['teams']['away']['id'] ?? null;
+            $valueStr = $outcome['value'];
+            if ($valueStr === '1') $valueStr = 'Home';
+            if ($valueStr === '2') $valueStr = 'Away';
+            if (stripos($valueStr, 'no goal') !== false) $valueStr = 'Draw';
             
             // Find last goal
             $lastGoal = null;
@@ -724,16 +849,16 @@ function calculateSingleOutcome($outcome, $fixture) {
             
             if ($lastGoal && isset($lastGoal['team']['id'])) {
                 $lastGoalTeamId = $lastGoal['team']['id'];
-                if ($outcome['value'] === 'Home' && $lastGoalTeamId == $homeTeamId) {
+                if ($valueStr === 'Home' && $lastGoalTeamId == $homeTeamId) {
                     return 'won';
-                } elseif ($outcome['value'] === 'Away' && $lastGoalTeamId == $awayTeamId) {
+                } elseif ($valueStr === 'Away' && $lastGoalTeamId == $awayTeamId) {
                     return 'won';
-                } elseif ($outcome['value'] === 'Draw' && $homeScore === 0 && $awayScore === 0) {
+                } elseif ($valueStr === 'Draw' && $homeScore === 0 && $awayScore === 0) {
                     return 'won';
                 } else {
                     return 'lost';
                 }
-            } elseif ($outcome['value'] === 'Draw' && $homeScore === 0 && $awayScore === 0) {
+            } elseif ($valueStr === 'Draw' && $homeScore === 0 && $awayScore === 0) {
                 return 'won';
             } else {
                 return 'lost';
@@ -742,7 +867,7 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Results/Both Teams Score - combined bet (e.g., "Home/Yes", "Draw/No")
-    if (stripos($betNameLower, 'results/both teams score') !== false) {
+    if (stripos($betNameLower, 'results/both teams score') !== false || stripos($betNameLower, 'result / both teams') !== false || stripos($betNameLower, 'result/both teams') !== false) {
         if (isset($outcome['value'])) {
             $valueStr = $outcome['value'];
             $parts = explode('/', $valueStr);
@@ -803,7 +928,7 @@ function calculateSingleOutcome($outcome, $fixture) {
     if (stripos($betNameLower, 'correct score') !== false && stripos($betNameLower, 'second half') !== false) {
         if (isset($outcome['value'])) {
             $scoreStr = $outcome['value']; // e.g., "1:0"
-            $parts = explode(':', $scoreStr);
+            $parts = preg_split('/[:\-]/', $scoreStr);
             if (count($parts) === 2) {
                 $expectedHome = intval($parts[0]);
                 $expectedAway = intval($parts[1]);
@@ -816,10 +941,10 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Home Team Exact Goals Number
-    if (stripos($betNameLower, 'home team exact goals number') !== false) {
+    if (stripos($betNameLower, 'home team exact goals number') !== false || stripos($betNameLower, 'how many goals will home team score') !== false) {
         if (isset($outcome['value'])) {
             $valueStr = $outcome['value'];
-            if ($valueStr === '0') {
+            if ($valueStr === '0' || stripos($valueStr, 'no goal') !== false) {
                 return ($homeScore === 0) ? 'won' : 'lost';
             } elseif ($valueStr === '1') {
                 return ($homeScore === 1) ? 'won' : 'lost';
@@ -835,10 +960,10 @@ function calculateSingleOutcome($outcome, $fixture) {
     }
     
     // Away Team Exact Goals Number
-    if (stripos($betNameLower, 'away team exact goals number') !== false) {
+    if (stripos($betNameLower, 'away team exact goals number') !== false || stripos($betNameLower, 'how many goals will away team score') !== false) {
         if (isset($outcome['value'])) {
             $valueStr = $outcome['value'];
-            if ($valueStr === '0') {
+            if ($valueStr === '0' || stripos($valueStr, 'no goal') !== false) {
                 return ($awayScore === 0) ? 'won' : 'lost';
             } elseif ($valueStr === '1') {
                 return ($awayScore === 1) ? 'won' : 'lost';
@@ -850,6 +975,245 @@ function calculateSingleOutcome($outcome, $fixture) {
                 $expectedGoals = intval($valueStr);
                 return ($awayScore === $expectedGoals) ? 'won' : 'lost';
             }
+        }
+    }
+
+    // Statistics-based markets (corners, cards, fouls, shots)
+    if ($stats && is_array($stats)) {
+        $homeCorners = getStatValue($stats, 'home', ['Corner Kicks', 'Corners']);
+        $awayCorners = getStatValue($stats, 'away', ['Corner Kicks', 'Corners']);
+        $homeFouls = getStatValue($stats, 'home', ['Fouls']);
+        $awayFouls = getStatValue($stats, 'away', ['Fouls']);
+        $homeShotsOnTarget = getStatValue($stats, 'home', ['Shots on Goal', 'Shots on Target']);
+        $awayShotsOnTarget = getStatValue($stats, 'away', ['Shots on Goal', 'Shots on Target']);
+        $homeTotalShots = getStatValue($stats, 'home', ['Total Shots']);
+        $awayTotalShots = getStatValue($stats, 'away', ['Total Shots']);
+        $homeYellow = getStatValue($stats, 'home', ['Yellow Cards']);
+        $awayYellow = getStatValue($stats, 'away', ['Yellow Cards']);
+        $homeRed = getStatValue($stats, 'home', ['Red Cards']);
+        $awayRed = getStatValue($stats, 'away', ['Red Cards']);
+
+        $homeCards = ($homeYellow ?? 0) + ($homeRed ?? 0);
+        $awayCards = ($awayYellow ?? 0) + ($awayRed ?? 0);
+
+        $valueStr = $outcome['value'] ?? '';
+
+        // Red Card In The Match (first half/full match)
+        if (stripos($betNameLower, 'red card') !== false) {
+            if (is_array($events) && !empty($events)) {
+                $redCount = 0;
+                foreach ($events as $event) {
+                    $type = $event['type'] ?? '';
+                    $detail = strtolower($event['detail'] ?? '');
+                    $time = intval($event['time']['elapsed'] ?? 0);
+                    if ($type === 'Card' && (strpos($detail, 'red') !== false || strpos($detail, 'second yellow') !== false)) {
+                        if (stripos($betNameLower, '1st half') !== false && $time > 45) {
+                            continue;
+                        }
+                        $redCount++;
+                    }
+                }
+                if (stripos($valueStr, 'Yes') !== false) return ($redCount > 0) ? 'won' : 'lost';
+                if (stripos($valueStr, 'No') !== false) return ($redCount === 0) ? 'won' : 'lost';
+            } elseif (stripos($betNameLower, '1st half') === false) {
+                $redTotal = ($homeRed ?? 0) + ($awayRed ?? 0);
+                if (stripos($valueStr, 'Yes') !== false) return ($redTotal > 0) ? 'won' : 'lost';
+                if (stripos($valueStr, 'No') !== false) return ($redTotal === 0) ? 'won' : 'lost';
+            }
+        }
+
+        // Cards Over/Under
+        if (stripos($betNameLower, 'cards over/under') !== false || stripos($betNameLower, 'cards over under') !== false) {
+            if ($valueStr !== '') {
+                preg_match('/(\d+\.?\d*)/', $valueStr, $matches);
+                $totalValue = isset($matches[1]) ? floatval($matches[1]) : 0;
+                $totalCards = $homeCards + $awayCards;
+                if (stripos($valueStr, 'Over') !== false) return ($totalCards > $totalValue) ? 'won' : (($totalCards == $totalValue) ? 'refunded' : 'lost');
+                if (stripos($valueStr, 'Under') !== false) return ($totalCards < $totalValue) ? 'won' : (($totalCards == $totalValue) ? 'refunded' : 'lost');
+            }
+        }
+
+        // Cards Asian Handicap
+        if (stripos($betNameLower, 'cards asian handicap') !== false) {
+            if ($valueStr !== '') {
+                preg_match('/(Home|Away)\s*([+-]?\d+\.?\d*)/i', $valueStr, $matches);
+                if (count($matches) === 3) {
+                    $side = strtolower($matches[1]);
+                    $handicap = floatval($matches[2]);
+                    $homeAdj = $homeCards + ($side === 'home' ? $handicap : 0);
+                    $awayAdj = $awayCards + ($side === 'away' ? $handicap : 0);
+                    if ($homeAdj === $awayAdj) return 'refunded';
+                    return ($side === 'home') ? (($homeAdj > $awayAdj) ? 'won' : 'lost') : (($awayAdj > $homeAdj) ? 'won' : 'lost');
+                }
+            }
+        }
+
+        // Home/Away Team Total Cards
+        if (stripos($betNameLower, 'home team total cards') !== false || stripos($betNameLower, 'away team total cards') !== false) {
+            $teamCards = (stripos($betNameLower, 'home') !== false) ? $homeCards : $awayCards;
+            if ($valueStr !== '') {
+                preg_match('/(\d+\.?\d*)/', $valueStr, $matches);
+                $totalValue = isset($matches[1]) ? floatval($matches[1]) : 0;
+                if (stripos($valueStr, 'Over') !== false) return ($teamCards > $totalValue) ? 'won' : (($teamCards == $totalValue) ? 'refunded' : 'lost');
+                if (stripos($valueStr, 'Under') !== false) return ($teamCards < $totalValue) ? 'won' : (($teamCards == $totalValue) ? 'refunded' : 'lost');
+            }
+        }
+
+        // Corners Over/Under (full match only)
+        if (stripos($betNameLower, 'corners over/under') !== false || stripos($betNameLower, 'corners over under') !== false || (stripos($betNameLower, 'total corners') !== false && stripos($betNameLower, '1st half') === false && stripos($betNameLower, '2nd half') === false)) {
+            if ($valueStr !== '' && $homeCorners !== null && $awayCorners !== null) {
+                preg_match('/(\d+\.?\d*)/', $valueStr, $matches);
+                $totalValue = isset($matches[1]) ? floatval($matches[1]) : 0;
+                $totalCorners = $homeCorners + $awayCorners;
+                if (stripos($valueStr, 'Over') !== false) return ($totalCorners > $totalValue) ? 'won' : (($totalCorners == $totalValue) ? 'refunded' : 'lost');
+                if (stripos($valueStr, 'Under') !== false) return ($totalCorners < $totalValue) ? 'won' : (($totalCorners == $totalValue) ? 'refunded' : 'lost');
+            }
+        }
+
+        // Home/Away Corners Over/Under
+        if (stripos($betNameLower, 'home corners over/under') !== false || stripos($betNameLower, 'home total corners') !== false || stripos($betNameLower, 'away corners over/under') !== false || stripos($betNameLower, 'away total corners') !== false) {
+            $teamCorners = (stripos($betNameLower, 'home') !== false) ? $homeCorners : $awayCorners;
+            if ($valueStr !== '' && $teamCorners !== null) {
+                preg_match('/(\d+\.?\d*)/', $valueStr, $matches);
+                $totalValue = isset($matches[1]) ? floatval($matches[1]) : 0;
+                if (stripos($valueStr, 'Over') !== false) return ($teamCorners > $totalValue) ? 'won' : (($teamCorners == $totalValue) ? 'refunded' : 'lost');
+                if (stripos($valueStr, 'Under') !== false) return ($teamCorners < $totalValue) ? 'won' : (($teamCorners == $totalValue) ? 'refunded' : 'lost');
+            }
+        }
+
+        // Corners 1x2
+        if (stripos($betNameLower, 'corners 1x2') !== false) {
+            if ($homeCorners !== null && $awayCorners !== null && $valueStr !== '') {
+                if ($valueStr === 'Home') return ($homeCorners > $awayCorners) ? 'won' : 'lost';
+                if ($valueStr === 'Draw') return ($homeCorners == $awayCorners) ? 'won' : 'lost';
+                if ($valueStr === 'Away') return ($awayCorners > $homeCorners) ? 'won' : 'lost';
+            }
+        }
+
+        // Corners Asian Handicap
+        if (stripos($betNameLower, 'corners asian handicap') !== false) {
+            if ($valueStr !== '' && $homeCorners !== null && $awayCorners !== null) {
+                preg_match('/(Home|Away)\s*([+-]?\d+\.?\d*)/i', $valueStr, $matches);
+                if (count($matches) === 3) {
+                    $side = strtolower($matches[1]);
+                    $handicap = floatval($matches[2]);
+                    $homeAdj = $homeCorners + ($side === 'home' ? $handicap : 0);
+                    $awayAdj = $awayCorners + ($side === 'away' ? $handicap : 0);
+                    if ($homeAdj === $awayAdj) return 'refunded';
+                    return ($side === 'home') ? (($homeAdj > $awayAdj) ? 'won' : 'lost') : (($awayAdj > $homeAdj) ? 'won' : 'lost');
+                }
+            }
+        }
+
+        // Fouls 1x2
+        if (stripos($betNameLower, 'fouls') !== false && stripos($betNameLower, '1x2') !== false) {
+            if ($homeFouls !== null && $awayFouls !== null && $valueStr !== '') {
+                if ($valueStr === 'Home') return ($homeFouls > $awayFouls) ? 'won' : 'lost';
+                if ($valueStr === 'Draw') return ($homeFouls == $awayFouls) ? 'won' : 'lost';
+                if ($valueStr === 'Away') return ($awayFouls > $homeFouls) ? 'won' : 'lost';
+            }
+        }
+
+        // Shots on Target 1x2 / Handicap
+        if (stripos($betNameLower, 'shotontarget') !== false || stripos($betNameLower, 'shots on target') !== false) {
+            if (stripos($betNameLower, 'handicap') !== false) {
+                if ($valueStr !== '' && $homeShotsOnTarget !== null && $awayShotsOnTarget !== null) {
+                    preg_match('/(Home|Away)\s*([+-]?\d+\.?\d*)/i', $valueStr, $matches);
+                    if (count($matches) === 3) {
+                        $side = strtolower($matches[1]);
+                        $handicap = floatval($matches[2]);
+                        $homeAdj = $homeShotsOnTarget + ($side === 'home' ? $handicap : 0);
+                        $awayAdj = $awayShotsOnTarget + ($side === 'away' ? $handicap : 0);
+                        if ($homeAdj === $awayAdj) return 'refunded';
+                        return ($side === 'home') ? (($homeAdj > $awayAdj) ? 'won' : 'lost') : (($awayAdj > $homeAdj) ? 'won' : 'lost');
+                    }
+                }
+            } elseif (stripos($betNameLower, '1x2') !== false && $valueStr !== '') {
+                if ($homeShotsOnTarget !== null && $awayShotsOnTarget !== null) {
+                    if ($valueStr === 'Home') return ($homeShotsOnTarget > $awayShotsOnTarget) ? 'won' : 'lost';
+                    if ($valueStr === 'Draw') return ($homeShotsOnTarget == $awayShotsOnTarget) ? 'won' : 'lost';
+                    if ($valueStr === 'Away') return ($awayShotsOnTarget > $homeShotsOnTarget) ? 'won' : 'lost';
+                }
+            }
+        }
+
+        // Total Shots (Over/Under or 1x2)
+        if (stripos($betNameLower, 'total shots') !== false) {
+            if ($homeTotalShots !== null && $awayTotalShots !== null && $valueStr !== '') {
+                $totalShots = $homeTotalShots + $awayTotalShots;
+                if (stripos($valueStr, 'Over') !== false || stripos($valueStr, 'Under') !== false) {
+                    preg_match('/(\d+\.?\d*)/', $valueStr, $matches);
+                    $totalValue = isset($matches[1]) ? floatval($matches[1]) : 0;
+                    if (stripos($valueStr, 'Over') !== false) return ($totalShots > $totalValue) ? 'won' : (($totalShots == $totalValue) ? 'refunded' : 'lost');
+                    if (stripos($valueStr, 'Under') !== false) return ($totalShots < $totalValue) ? 'won' : (($totalShots == $totalValue) ? 'refunded' : 'lost');
+                } else {
+                    if ($valueStr === 'Home') return ($homeTotalShots > $awayTotalShots) ? 'won' : 'lost';
+                    if ($valueStr === 'Draw') return ($homeTotalShots == $awayTotalShots) ? 'won' : 'lost';
+                    if ($valueStr === 'Away') return ($awayTotalShots > $homeTotalShots) ? 'won' : 'lost';
+                }
+            }
+        }
+
+        // Corners Odd/Even
+        if (stripos($betNameLower, 'corners') !== false && stripos($betNameLower, 'odd/even') !== false) {
+            if ($homeCorners !== null && $awayCorners !== null && $valueStr !== '') {
+                $totalCorners = $homeCorners + $awayCorners;
+                $isOdd = ((int)$totalCorners % 2) === 1;
+                if (stripos($valueStr, 'Odd') !== false) return $isOdd ? 'won' : 'lost';
+                if (stripos($valueStr, 'Even') !== false) return !$isOdd ? 'won' : 'lost';
+            }
+        }
+    }
+
+    // Draw No Bet
+    if (stripos($betNameLower, 'draw no bet') !== false) {
+        if (isset($outcome['value'])) {
+            if ($homeScore === $awayScore) {
+                return 'refunded';
+            }
+            if ($outcome['value'] === 'Home') {
+                return ($homeScore > $awayScore) ? 'won' : 'lost';
+            } elseif ($outcome['value'] === 'Away') {
+                return ($awayScore > $homeScore) ? 'won' : 'lost';
+            }
+        }
+    }
+
+    // Clean Sheet (Home/Away)
+    if (stripos($betNameLower, 'home team clean sheet') !== false) {
+        if (isset($outcome['value'])) {
+            $valueStr = $outcome['value'];
+            $homeCleanSheet = ($awayScore === 0);
+            if (stripos($valueStr, 'Yes') !== false) return $homeCleanSheet ? 'won' : 'lost';
+            if (stripos($valueStr, 'No') !== false) return !$homeCleanSheet ? 'won' : 'lost';
+        }
+    }
+
+    if (stripos($betNameLower, 'away team clean sheet') !== false) {
+        if (isset($outcome['value'])) {
+            $valueStr = $outcome['value'];
+            $awayCleanSheet = ($homeScore === 0);
+            if (stripos($valueStr, 'Yes') !== false) return $awayCleanSheet ? 'won' : 'lost';
+            if (stripos($valueStr, 'No') !== false) return !$awayCleanSheet ? 'won' : 'lost';
+        }
+    }
+
+    // Team Score a Goal (2nd Half)
+    if (stripos($betNameLower, 'home team score a goal') !== false && (stripos($betNameLower, '2nd half') !== false || stripos($betNameLower, 'second half') !== false)) {
+        if (isset($outcome['value'])) {
+            $secondHalfHome = $homeScore - $halftimeHome;
+            $homeScoredSecondHalf = ($secondHalfHome > 0);
+            if (stripos($outcome['value'], 'Yes') !== false) return $homeScoredSecondHalf ? 'won' : 'lost';
+            if (stripos($outcome['value'], 'No') !== false) return !$homeScoredSecondHalf ? 'won' : 'lost';
+        }
+    }
+
+    if (stripos($betNameLower, 'away team score a goal') !== false && (stripos($betNameLower, '2nd half') !== false || stripos($betNameLower, 'second half') !== false)) {
+        if (isset($outcome['value'])) {
+            $secondHalfAway = $awayScore - $halftimeAway;
+            $awayScoredSecondHalf = ($secondHalfAway > 0);
+            if (stripos($outcome['value'], 'Yes') !== false) return $awayScoredSecondHalf ? 'won' : 'lost';
+            if (stripos($outcome['value'], 'No') !== false) return !$awayScoredSecondHalf ? 'won' : 'lost';
         }
     }
     
@@ -905,21 +1269,21 @@ function settleUserBets($userId = null) {
                 continue;
             }
             
-            // Get fixture data
+            // Get fixture context (fixture + events + stats)
             try {
-                $fixtureData = apiSportsRequest('/fixtures', ['id' => $fixtureId]);
+                $context = getFixtureContext($fixtureId);
             } catch (Exception $e) {
                 error_log("[SettleBets] Bet ID: {$bet['bet_id']}, Fixture ID: {$fixtureId} - API Error: " . $e->getMessage());
                 $errors[] = "Bet {$bet['bet_id']}: API Error - " . $e->getMessage();
                 continue;
             }
             
-            if (!isset($fixtureData['response']) || empty($fixtureData['response'])) {
+            if (!isset($context['fixture']) || empty($context['fixture'])) {
                 error_log("[SettleBets] Bet ID: {$bet['bet_id']}, Fixture ID: {$fixtureId} - Match not found in API response");
                 continue; // Match not found
             }
             
-            $fixture = $fixtureData['response'][0];
+            $fixture = $context['fixture'];
             $status = trim($fixture['fixture']['status']['long'] ?? '');
             $statusShort = trim($fixture['fixture']['status']['short'] ?? '');
             
@@ -975,7 +1339,7 @@ function settleUserBets($userId = null) {
             }
             
             // Calculate bet result
-            $result = calculateBetResult($bet, $fixture);
+            $result = calculateBetResult($bet, $fixture, $context);
             
             // Update debug info with calculation result
             $statusInfo['calculation_result'] = $result;
