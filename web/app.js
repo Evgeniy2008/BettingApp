@@ -4092,6 +4092,24 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     const name = String(betName).toLowerCase();
     return /(1x2|match winner|full time result|win\/draw\/win|winner|исход)/.test(name);
   };
+
+  // Function to replace Home/Away/Draw with actual team names for display
+  const getDisplayValue = (value, homeTeam, awayTeam) => {
+    if (!value) return value;
+    let val = String(value);
+    
+    // Replace simple values
+    if (val === 'Home') return homeTeam;
+    if (val === 'Away') return awayTeam;
+    if (val === 'Draw') return 'Draw';
+    
+    // Replace in combined values
+    val = val.replace(/\bHome\b/g, homeTeam);
+    val = val.replace(/\bAway\b/g, awayTeam);
+    // Draw remains as "Draw"
+    
+    return val;
+  };
   
   try {
     // Use api-sports.io odds API
@@ -4100,8 +4118,14 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
       return;
     }
     
+    // Determine if this is a live match
+    const isLiveMatch = !!matchObj?.isLive;
+    
     console.log('[Match Detail] Fetching odds for fixture:', fixtureId);
-    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}`;
+    
+    // Use PHP proxy for all odds requests (both live and regular)
+    const liveParam = isLiveMatch ? '&live=true' : '';
+    const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}${liveParam}`;
     
     const res = await fetch(url, {
       method: 'GET',
@@ -4117,8 +4141,9 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     }
     
     const data = await res.json();
-    console.log('[Match Detail] Odds data received');
+    console.log('[Match Detail] Odds data received:', data);
     
+    // Check if data is valid (PHP proxy always returns 'ok' field)
     if (!data.ok || !data.response || !Array.isArray(data.response) || data.response.length === 0) {
       modalBody.innerHTML = '<div class="loading" style="padding: 40px; text-align: center; color: rgba(232, 232, 234, 0.7);">Коэффициенты не найдены</div>';
       return;
@@ -4129,7 +4154,6 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     // Build HTML with team logos, league, and live info (like on main page)
     const homeLogo = matchObj?.homeLogo ? `<img src="${matchObj.homeLogo}" alt="${home}" class="match-detail-team-logo" onerror="this.style.display='none';">` : '<div class="match-detail-team-logo-placeholder"></div>';
     const awayLogo = matchObj?.awayLogo ? `<img src="${matchObj.awayLogo}" alt="${away}" class="match-detail-team-logo" onerror="this.style.display='none';">` : '<div class="match-detail-team-logo-placeholder"></div>';
-    const isLiveMatch = !!matchObj?.isLive;
     const liveTimeText = isLiveMatch && matchObj?.liveTime
       ? `${matchObj.liveTime}${matchObj.livePeriod ? ' • ' + matchObj.livePeriod : ''}`
       : '';
@@ -4162,60 +4186,130 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     html += '<div class="match-detail-odds-blocks">';
     
     // Process odds data - structure: response[].bookmakers[].bets[] - Only show 10Bet
-    for (const item of data.response) {
-      if (!item.bookmakers || !Array.isArray(item.bookmakers)) continue;
+    // For live matches, the structure is response[].odds[] (no bookmakers)
+    if (isLiveMatch && data.response?.[0]?.odds) {
+      // Live match: process odds directly
+      const liveOdds = data.response[0].odds;
+      console.log('[Match Detail] Processing live odds:', liveOdds.length, 'bets');
       
-      for (const bookmaker of item.bookmakers) {
-        // Only show 10Bet bookmaker
-        const is10Bet = bookmaker.name && (bookmaker.name.includes('10Bet') || bookmaker.name.includes('10bet'));
-        if (!is10Bet) continue;
+      html += `<div class="match-detail-odds-block" style="margin-bottom: 20px;">`;
+      html += `<div class="match-detail-odds-block-content">`;
+      
+      for (const bet of liveOdds) {
+        if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) continue;
         
-        if (!bookmaker.bets || !Array.isArray(bookmaker.bets)) continue;
+        // Skip Home/Away category
+        if (bet.name === 'Home/Away') continue;
         
-        // Group bets by bookmaker
-        html += `<div class="match-detail-odds-block" style="margin-bottom: 20px;">`;
-        html += `<div class="match-detail-odds-block-content">`;
+        const betCategory = getBetCategory(bet.name);
+        const matchWinnerLayout = isMatchWinnerBet(bet.name) ? 'match-detail-bet-options-1x2' : '';
+        html += `<div class="match-detail-bet-group" data-category="${betCategory}" data-bet-name="${bet.name || 'Bet'}">`;
+        html += `<div class="match-detail-bet-title">${bet.name || 'Bet'}</div>`;
+        html += `<div class="match-detail-bet-options ${matchWinnerLayout}">`;
         
-        for (const bet of bookmaker.bets) {
-          if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) continue;
+        for (const value of bet.values) {
+          // Skip suspended bets in live matches
+          if (value.suspended === true) continue;
           
-          const betCategory = getBetCategory(bet.name);
-          const matchWinnerLayout = isMatchWinnerBet(bet.name) ? 'match-detail-bet-options-1x2' : '';
-          html += `<div class="match-detail-bet-group" data-category="${betCategory}" data-bet-name="${bet.name || 'Bet'}">`;
-          html += `<div class="match-detail-bet-title">${bet.name || 'Bet'}</div>`;
-          html += `<div class="match-detail-bet-options ${matchWinnerLayout}">`;
+          const outcomeId = `${fixtureId}_live_${bet.id || 'bet'}_${value.value || 'value'}_${value.odd}`;
+          const isActive = state.slip.some(s => {
+            return s.outcomeId === outcomeId || 
+                   (s.matchId === matchId && 
+                    s.betName === bet.name && 
+                    s.value === value.value &&
+                    Math.abs(s.odd - parseFloat(value.odd)) < 0.01);
+          });
           
-          for (const value of bet.values) {
-            const outcomeId = `${fixtureId}_${bookmaker.id || 'bookmaker'}_${bet.id || 'bet'}_${value.value || 'value'}_${value.odd}`;
-            const isActive = state.slip.some(s => {
-              return s.outcomeId === outcomeId || 
-                     (s.matchId === matchId && 
-                      s.betName === bet.name && 
-                      s.value === value.value &&
-                      Math.abs(s.odd - parseFloat(value.odd)) < 0.01);
-            });
+          // Get display value (replace Home/Away/Draw with team names)
+          const displayValue = getDisplayValue(value.value, home, away);
+          
+          // Add handicap to display if exists
+          const handicapText = value.handicap ? ` (${value.handicap})` : '';
+          
+          html += `
+            <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
+                    data-match-id="${matchId}"
+                    data-fixture-id="${fixtureId}"
+                    data-bookmaker-id="live"
+                    data-bookmaker-name="Live"
+                    data-bet-id="${bet.id || 'bet'}"
+                    data-bet-name="${bet.name || 'Bet'}"
+                    data-value="${value.value || ''}"
+                    data-odd="${value.odd}"
+                    data-outcome-id="${outcomeId}">
+              <span class="match-detail-odds-btn-label">${displayValue || ''}${handicapText}</span>
+              <span class="match-detail-odds-btn-value">${formatOdd(parseFloat(value.odd))}</span>
+            </button>
+          `;
+        }
+        
+        html += `</div></div>`;
+      }
+      
+      html += `</div></div>`;
+    } else {
+      // Non-live match: process bookmakers
+      for (const item of data.response) {
+        if (!item.bookmakers || !Array.isArray(item.bookmakers)) continue;
+        
+        for (const bookmaker of item.bookmakers) {
+          // Only show 10Bet bookmaker
+          const is10Bet = bookmaker.name && (bookmaker.name.includes('10Bet') || bookmaker.name.includes('10bet'));
+          if (!is10Bet) continue;
+          
+          if (!bookmaker.bets || !Array.isArray(bookmaker.bets)) continue;
+        
+          // Group bets by bookmaker
+          html += `<div class="match-detail-odds-block" style="margin-bottom: 20px;">`;
+          html += `<div class="match-detail-odds-block-content">`;
+          
+          for (const bet of bookmaker.bets) {
+            if (!bet.values || !Array.isArray(bet.values) || bet.values.length === 0) continue;
             
-            html += `
-              <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
-                      data-match-id="${matchId}"
-                      data-fixture-id="${fixtureId}"
-                      data-bookmaker-id="${bookmaker.id || 'bookmaker'}"
-                      data-bookmaker-name="${bookmaker.name || 'Bookmaker'}"
-                      data-bet-id="${bet.id || 'bet'}"
-                      data-bet-name="${bet.name || 'Bet'}"
-                      data-value="${value.value || ''}"
-                      data-odd="${value.odd}"
-                      data-outcome-id="${outcomeId}">
-                <span class="match-detail-odds-btn-label">${value.value || ''}</span>
-                <span class="match-detail-odds-btn-value">${formatOdd(parseFloat(value.odd))}</span>
-              </button>
-            `;
+            // Skip Home/Away category
+            if (bet.name === 'Home/Away') continue;
+            
+            const betCategory = getBetCategory(bet.name);
+            const matchWinnerLayout = isMatchWinnerBet(bet.name) ? 'match-detail-bet-options-1x2' : '';
+            html += `<div class="match-detail-bet-group" data-category="${betCategory}" data-bet-name="${bet.name || 'Bet'}">`;
+            html += `<div class="match-detail-bet-title">${bet.name || 'Bet'}</div>`;
+            html += `<div class="match-detail-bet-options ${matchWinnerLayout}">`;
+            
+            for (const value of bet.values) {
+              const outcomeId = `${fixtureId}_${bookmaker.id || 'bookmaker'}_${bet.id || 'bet'}_${value.value || 'value'}_${value.odd}`;
+              const isActive = state.slip.some(s => {
+                return s.outcomeId === outcomeId || 
+                       (s.matchId === matchId && 
+                        s.betName === bet.name && 
+                        s.value === value.value &&
+                        Math.abs(s.odd - parseFloat(value.odd)) < 0.01);
+              });
+              
+              // Get display value (replace Home/Away/Draw with team names)
+              const displayValue = getDisplayValue(value.value, home, away);
+              
+              html += `
+                <button class="match-detail-odds-btn ${isActive ? "match-detail-odds-btn-active" : ""}" 
+                        data-match-id="${matchId}"
+                        data-fixture-id="${fixtureId}"
+                        data-bookmaker-id="${bookmaker.id || 'bookmaker'}"
+                        data-bookmaker-name="${bookmaker.name || 'Bookmaker'}"
+                        data-bet-id="${bet.id || 'bet'}"
+                        data-bet-name="${bet.name || 'Bet'}"
+                        data-value="${value.value || ''}"
+                        data-odd="${value.odd}"
+                        data-outcome-id="${outcomeId}">
+                  <span class="match-detail-odds-btn-label">${displayValue || ''}</span>
+                  <span class="match-detail-odds-btn-value">${formatOdd(parseFloat(value.odd))}</span>
+                </button>
+              `;
+            }
+            
+            html += `</div></div>`;
           }
           
           html += `</div></div>`;
         }
-        
-        html += `</div></div>`;
       }
     }
     

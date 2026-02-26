@@ -74,6 +74,7 @@ function apiSportsRequest($endpoint, $params = []) {
 try {
     // Get fixture ID from request
     $fixtureId = $_GET['fixture'] ?? $_GET['matchId'] ?? null;
+    $isLive = isset($_GET['live']) && $_GET['live'] === 'true';
     
     if (!$fixtureId) {
         sendJSON([
@@ -82,8 +83,9 @@ try {
         ], 400);
     }
     
-    // Get odds from API-Sports
-    $oddsData = apiSportsRequest('/odds', [
+    // Get odds from API-Sports (use live endpoint for live matches)
+    $endpoint = $isLive ? '/odds/live' : '/odds';
+    $oddsData = apiSportsRequest($endpoint, [
         'fixture' => $fixtureId
     ]);
     

@@ -1,0 +1,785 @@
+{
+get: "odds/live"
+parameters: {
+fixture: "1470726"
+}
+errors: [
+]
+results: 1
+paging: {
+current: 1
+total: 1
+}
+response: [
+{
+fixture: {
+id: 1470726
+status: {
+long: "Second Half"
+elapsed: 88
+seconds: "87:31"
+}
+}
+league: {
+id: 276
+season: 2025
+}
+teams: {
+home: {
+id: 2470
+goals: 0
+}
+away: {
+id: 8560
+goals: 2
+}
+}
+status: {
+stopped: false
+blocked: false
+finished: false
+}
+update: "2026-02-26T11:50:56+00:00"
+odds: [
+{
+id: 39
+name: "Away Team Goals"
+values: [
+{
+value: "Over"
+odd: "7"
+handicap: "2.5"
+main: null
+suspended: false
+}
+{
+value: "Under"
+odd: "1.083"
+handicap: "2.5"
+main: null
+suspended: false
+}
+]
+}
+{
+id: 57
+name: "Away Team Clean Sheet"
+values: [
+{
+value: "Yes"
+odd: "1.071"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "No"
+odd: "7.5"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 33
+name: "Asian Handicap"
+values: [
+{
+value: "Home"
+odd: "1.17"
+handicap: "2.25"
+main: false
+suspended: false
+}
+{
+value: "Away"
+odd: "4.6"
+handicap: "-2.25"
+main: false
+suspended: false
+}
+{
+value: "Home"
+odd: "2.05"
+handicap: "2"
+main: true
+suspended: false
+}
+{
+value: "Away"
+odd: "1.75"
+handicap: "-2"
+main: true
+suspended: false
+}
+{
+value: "Home"
+odd: "5.4"
+handicap: "1.75"
+main: false
+suspended: false
+}
+{
+value: "Away"
+odd: "1.13"
+handicap: "-1.75"
+main: false
+suspended: false
+}
+]
+}
+{
+id: 21
+name: "3-Way Handicap"
+values: [
+{
+value: "Home"
+odd: "1.083"
+handicap: "3"
+main: false
+suspended: false
+}
+{
+value: "Draw"
+odd: "8"
+handicap: "-3"
+main: false
+suspended: false
+}
+{
+value: "Away"
+odd: "51"
+handicap: "-3"
+main: false
+suspended: false
+}
+{
+value: "Home"
+odd: "41"
+handicap: "1"
+main: false
+suspended: false
+}
+{
+value: "Draw"
+odd: "10"
+handicap: "-1"
+main: false
+suspended: false
+}
+{
+value: "Away"
+odd: "1.062"
+handicap: "-1"
+main: false
+suspended: false
+}
+{
+value: "Home"
+odd: "8"
+handicap: "2"
+main: true
+suspended: false
+}
+{
+value: "Draw"
+odd: "1.166"
+handicap: "-2"
+main: true
+suspended: false
+}
+{
+value: "Away"
+odd: "7"
+handicap: "-2"
+main: true
+suspended: false
+}
+]
+}
+{
+id: 23
+name: "Final Score"
+values: [
+{
+value: "1-0"
+odd: "8.5"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "2-0"
+odd: "21"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "2-1"
+odd: "19"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "3-0"
+odd: "41"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "3-1"
+odd: "51"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "3-2"
+odd: "101"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "4-0"
+odd: "101"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "4-1"
+odd: "126"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "0-0"
+odd: "5"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "1-1"
+odd: "5.5"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "2-2"
+odd: "67"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "3-3"
+odd: "101"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "0-1"
+odd: "2.375"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "0-2"
+odd: "1.2"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "1-2"
+odd: "10"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "0-3"
+odd: "8"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "1-3"
+odd: "41"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "2-3"
+odd: "81"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "0-4"
+odd: "51"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "1-4"
+odd: "81"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "2-4"
+odd: "101"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "0-5"
+odd: "101"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "1-5"
+odd: "101"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "0-6"
+odd: "101"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "4-2"
+odd: "126"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "3-4"
+odd: "126"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "2-5"
+odd: "126"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "1-6"
+odd: "126"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "0-7"
+odd: "126"
+handicap: null
+main: null
+suspended: true
+}
+]
+}
+{
+id: 29
+name: "Result / Both Teams To Score"
+values: [
+{
+value: "Home/Yes"
+odd: "81"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Away/Yes"
+odd: "9"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Draw/Yes"
+odd: "41"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Home/No"
+odd: "0"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "Away/No"
+odd: "1.071"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Draw/No"
+odd: "0"
+handicap: null
+main: null
+suspended: true
+}
+]
+}
+{
+id: 27
+name: "Home Team Score a Goal (2nd Half)"
+values: [
+{
+value: "Yes"
+odd: "7.5"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "No"
+odd: "1.071"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 25
+name: "Match Goals"
+values: [
+{
+value: "Over"
+odd: "15"
+handicap: "3.5"
+main: null
+suspended: false
+}
+{
+value: "Under"
+odd: "1.01"
+handicap: "3.5"
+main: null
+suspended: false
+}
+{
+value: "Over"
+odd: "4.333"
+handicap: "2.5"
+main: null
+suspended: false
+}
+{
+value: "Under"
+odd: "1.2"
+handicap: "2.5"
+main: null
+suspended: false
+}
+]
+}
+{
+id: 35
+name: "To Win 2nd Half"
+values: [
+{
+value: "Home"
+odd: "41"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Draw"
+odd: "10"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Away"
+odd: "1.062"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 16
+name: "How many goals will Away Team score?"
+values: [
+{
+value: "No goal"
+odd: "3.25"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "1"
+odd: "1.666"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "2"
+odd: "1.083"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "3 or more"
+odd: "7"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 59
+name: "Fulltime Result"
+values: [
+{
+value: "Home"
+odd: "81"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Draw"
+odd: "41"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Away"
+odd: "1.004"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 68
+name: "Goals Odd/Even"
+values: [
+{
+value: "Odd"
+odd: "4.5"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "Even"
+odd: "1.181"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 92
+name: "Which team will score the 3rd goal?"
+values: [
+{
+value: "1"
+odd: "7.5"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "No goal"
+odd: "1.2"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "2"
+odd: "7"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 69
+name: "Both Teams to Score"
+values: [
+{
+value: "Yes"
+odd: "7.5"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "No"
+odd: "1.071"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 43
+name: "Both Teams To Score (2nd Half)"
+values: [
+{
+value: "Yes"
+odd: "7.5"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "No"
+odd: "1.071"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 62
+name: "Last Team to Score (3 way)"
+values: [
+{
+value: "1"
+odd: "7.5"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "No goal"
+odd: "5"
+handicap: null
+main: null
+suspended: true
+}
+{
+value: "2"
+odd: "1.071"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+{
+id: 36
+name: "Over/Under Line"
+values: [
+{
+value: "Over"
+odd: "4.25"
+handicap: "2.5"
+main: true
+suspended: false
+}
+{
+value: "Under"
+odd: "1.21"
+handicap: "2.5"
+main: true
+suspended: false
+}
+{
+value: "Over"
+odd: "6.6"
+handicap: "2.75"
+main: false
+suspended: false
+}
+{
+value: "Under"
+odd: "1.1"
+handicap: "2.75"
+main: false
+suspended: false
+}
+]
+}
+{
+id: 67
+name: "How many goals will Home Team score?"
+values: [
+{
+value: "No goal"
+odd: "1.071"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "1"
+odd: "9"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "2"
+odd: "41"
+handicap: null
+main: null
+suspended: false
+}
+{
+value: "3 or more"
+odd: "101"
+handicap: null
+main: null
+suspended: false
+}
+]
+}
+]
+}
+]
+}
