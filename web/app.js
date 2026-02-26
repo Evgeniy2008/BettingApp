@@ -1313,6 +1313,29 @@ async function renderMatches() {
 }
 
 function renderMatchRow(match) {
+  const isLive = match.isLive || false;
+  
+  // For live matches, try to extract available odds from fullData
+  let liveOddsDisplay = null;
+  if (isLive && match.loadedOdds && match.loadedOdds.fullData && Array.isArray(match.loadedOdds.fullData)) {
+    const firstItem = match.loadedOdds.fullData[0];
+    if (firstItem && firstItem.odds && Array.isArray(firstItem.odds) && firstItem.odds.length > 0) {
+      // Get first 3 bet types with their values
+      liveOddsDisplay = firstItem.odds.slice(0, 3).map(bet => {
+        const betName = bet.name || '';
+        const firstValues = bet.values ? bet.values.slice(0, 3) : [];
+        return {
+          name: betName,
+          values: firstValues.map(v => ({
+            label: v.value || '',
+            odd: v.odd || '—',
+            handicap: v.handicap || null
+          }))
+        };
+      });
+    }
+  }
+  
   // Use loaded odds from API if available (from filterMatchesWithOdds)
   // Otherwise fall back to outcomes from match data
   let homeOdd = null;
@@ -1382,7 +1405,6 @@ function renderMatchRow(match) {
     .filter((o) => o.type === "fora" && (o.label === "Фора 2" || o.label.includes("Handicap 2")) && o.value === foraValue)
     .sort((a, b) => b.odd - a.odd)[0];
 
-  const isLive = match.isLive || false;
   const matchIdForFavorite = match.id || match.matchId || '';
   const isMatchFavorite = isFavorite('match', matchIdForFavorite);
   
@@ -1412,20 +1434,47 @@ function renderMatchRow(match) {
     ? `<div class="match-time-digital">${match.time || "TBD"}</div>`
     : '';
 
-  // Render only three main odds: Home, Draw, Away (1, X, 2)
-  // Use loaded odds with proper labels
-  const oddsButtons = [];
+  // Render odds: for live matches with available bet data, show real bets
+  // Otherwise show standard 1X2
+  let oddsRow = '';
   
-  // Add 1X2 odds with proper labels - always show all three (1, X, 2) even if some are missing
-  const oddsRow = `
-    <div class="match-odds-digital">
-      <div class="odds-buttons-inline odds-buttons-full-width">
-        ${renderOutcomeButton(match, "1", homeOdd, "Home")}
-        ${renderOutcomeButton(match, "X", drawOdd, "Draw")}
-        ${renderOutcomeButton(match, "2", awayOdd, "Away")}
+  if (liveOddsDisplay && liveOddsDisplay.length > 0) {
+    // Show live bets with their names
+    const liveOddsHtml = liveOddsDisplay.map(bet => {
+      const betNameShort = bet.name.length > 20 ? bet.name.substring(0, 18) + '...' : bet.name;
+      const valuesHtml = bet.values.map(v => {
+        const displayLabel = v.handicap ? `${v.label} ${v.handicap}` : v.label;
+        const displayOdd = v.odd !== '—' ? parseFloat(v.odd).toFixed(2) : '—';
+        return `<div class="live-odd-value">
+          <div class="live-odd-label">${displayLabel}</div>
+          <div class="live-odd-num">${displayOdd}</div>
+        </div>`;
+      }).join('');
+      
+      return `<div class="live-bet-group">
+        <div class="live-bet-name">${betNameShort}</div>
+        <div class="live-bet-values">${valuesHtml}</div>
+      </div>`;
+    }).join('');
+    
+    oddsRow = `
+      <div class="match-odds-digital match-odds-live">
+        ${liveOddsHtml}
       </div>
-    </div>
-  `;
+    `;
+  } else if (!isLive) {
+    // Standard 1X2 odds (only for prematch matches)
+    oddsRow = `
+      <div class="match-odds-digital">
+        <div class="odds-buttons-inline odds-buttons-full-width">
+          ${renderOutcomeButton(match, "1", homeOdd, "Home")}
+          ${renderOutcomeButton(match, "X", drawOdd, "Draw")}
+          ${renderOutcomeButton(match, "2", awayOdd, "Away")}
+        </div>
+      </div>
+    `;
+  }
+  // For live matches without odds data, oddsRow stays empty
   
   return `
     <div class="match-card-digital ${isLive ? 'match-card-live' : ''}" data-match-id="${match.id}">

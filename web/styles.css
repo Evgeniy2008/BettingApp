@@ -1384,6 +1384,69 @@ html {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Live odds display (showing actual bet names and values) */
+.match-odds-live {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.live-bet-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.live-bet-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.3px;
+}
+
+.live-bet-values {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.live-odd-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  min-height: 28px;
+}
+
+.live-odd-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-odd-num {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
 .odds-buttons-inline {
   display: flex;
   gap: 6px;
