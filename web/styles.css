@@ -5192,6 +5192,34 @@ html {
   color: #f4f4f5;
 }
 
+/* Fixture information display */
+.match-detail-fixture-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.fixture-info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.fixture-info-item:last-child {
+  border-bottom: none;
+}
+
+.fixture-info-label {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  margin-right: 12px;
+}
+
 .match-detail-odds-blocks {
   display: flex;
   flex-direction: column;

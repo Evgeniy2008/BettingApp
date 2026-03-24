@@ -4215,6 +4215,17 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     
     console.log('[Match Detail] Fetching odds for fixture:', fixtureId);
     
+    // Fetch fixture details (from match-detail.php API)
+    let fixtureData = null;
+    try {
+      const fixtureRes = await fetch(`${PHP_API_BASE}/match-detail.php?fixture=${fixtureId}`);
+      if (fixtureRes.ok) {
+        fixtureData = await fixtureRes.json();
+      }
+    } catch (e) {
+      console.warn('[Match Detail] Could not fetch fixture details:', e);
+    }
+    
     // Use PHP proxy for all odds requests (both live and regular)
     const liveParam = isLiveMatch ? '&live=true' : '';
     const url = `${PHP_API_BASE}/odds.php?fixture=${fixtureId}${liveParam}`;
@@ -4263,6 +4274,45 @@ async function loadMatchDetail(fixtureIdOrMatch, match) {
     html += `<div class="match-detail-vs">${liveTimeHtml}${scoreHtml}</div>`;
     html += `<div class="match-detail-team">${awayLogo}<div class="match-detail-team-name">${away}</div></div>`;
     html += '</div>';
+
+    // Add fixture information (status, period, attendance, venue, etc.)
+    if (fixtureData && fixtureData.fixture) {
+      const fixture = fixtureData.fixture;
+      const infoItems = [];
+      
+      // Status
+      if (fixture.status) {
+        infoItems.push(`<div class="fixture-info-item"><span class="fixture-info-label">Status:</span> <span>${fixture.status}</span></div>`);
+      }
+      
+      // Referee
+      if (fixture.referee) {
+        infoItems.push(`<div class="fixture-info-item"><span class="fixture-info-label">Referee:</span> <span>${fixture.referee}</span></div>`);
+      }
+      
+      // Venue
+      if (fixture.venue) {
+        infoItems.push(`<div class="fixture-info-item"><span class="fixture-info-label">Venue:</span> <span>${fixture.venue}</span></div>`);
+      }
+      
+      // Attendance
+      if (fixture.attendance) {
+        infoItems.push(`<div class="fixture-info-item"><span class="fixture-info-label">Attendance:</span> <span>${fixture.attendance.toLocaleString()}</span></div>`);
+      }
+      
+      // Duration
+      if (fixture.duration) {
+        infoItems.push(`<div class="fixture-info-item"><span class="fixture-info-label">Duration:</span> <span>${fixture.duration}</span></div>`);
+      }
+      
+      if (infoItems.length > 0) {
+        html += `
+          <div class="match-detail-fixture-info" style="padding: 12px 20px; background: rgba(255, 255, 255, 0.03); border-top: 1px solid rgba(255, 255, 255, 0.08); border-bottom: 1px solid rgba(255, 255, 255, 0.08); margin: 12px 0; font-size: 13px; color: rgba(255, 255, 255, 0.7);">
+            ${infoItems.join('')}
+          </div>
+        `;
+      }
+    }
 
     html += `
       <div class="match-detail-filters" role="tablist" aria-label="Odds filters">

@@ -282,6 +282,20 @@ try {
     // Return match detail with all odds
     sendJSON([
         'ok' => true,
+        'fixture' => [
+            'id' => $fixture['fixture']['id'],
+            'date' => $fixture['fixture']['date'],
+            'timestamp' => $fixture['fixture']['timestamp'],
+            'timezone' => $fixture['fixture']['timezone'],
+            'status' => $fixture['fixture']['status']['long'] ?? null,
+            'statusShort' => $fixture['fixture']['status']['short'] ?? null,
+            'elapsed' => $fixture['fixture']['status']['elapsed'] ?? null,
+            'venue' => $fixture['fixture']['venue']['name'] ?? null,
+            'city' => $fixture['fixture']['venue']['city'] ?? null,
+            'referee' => $fixture['fixture']['referee'] ?? null,
+            'attendance' => $fixture['fixture']['attendance'] ?? null,
+            'duration' => $fixture['fixture']['duration'] ?? null
+        ],
         'match' => [
             'matchId' => $matchId,
             'home' => $home,
